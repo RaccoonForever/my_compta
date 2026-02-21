@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Basic rule: authenticated users can read/write their own documents
+    match /transactions/{docId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
