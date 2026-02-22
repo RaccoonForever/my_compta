@@ -8,15 +8,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "firebase": "^10.5.0",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "firebase": "^10.5.0"
+    "react-dom": "^18.0.0"
   },
   "devDependencies": {
-    "vite": "^5.0.0",
-    "typescript": "^5.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
-    "@vitejs/plugin-react": "^4.0.0"
+    "@vitejs/plugin-react": "^4.0.0",
+    "crypto-browserify": "^3.12.1",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
   }
 }
