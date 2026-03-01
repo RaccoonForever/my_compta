@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  font-family: var(--font-sans);
+}
+
+/* Privacy mode: blur all monetary amounts */
+.privacy-mode [data-amount] {
+  filter: blur(6px);
+  user-select: none;
+  pointer-events: none;
+}

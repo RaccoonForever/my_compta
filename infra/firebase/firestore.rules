@@ -1,9 +1,76 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Basic rule: authenticated users can read/write their own documents
-    match /transactions/{docId} {
-      allow read, write: if request.auth != null;
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    function isNewOwner() {
+      return isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    function validMoney(m) {
+      return m.value is number
+          && m.currency in ['CHF', 'EUR', 'USD', 'GBP'];
+    }
+
+    // ── Users ───────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isSignedIn() && userId == request.auth.uid;
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false; // soft-delete only
+    }
+
+    // ── Accounts ────────────────────────────────────────────────────────
+    match /accounts/{accountId} {
+      allow read: if isOwner();
+      allow create: if isNewOwner()
+          && request.resource.data.currency in ['CHF', 'EUR', 'USD', 'GBP']
+          && request.resource.data.name is string;
+      allow update, delete: if isOwner();
+    }
+
+    // ── Categories ──────────────────────────────────────────────────────
+    match /categories/{categoryId} {
+      allow read: if isOwner();
+      allow create: if isNewOwner()
+          && request.resource.data.kind in ['income', 'expense']
+          && request.resource.data.name is string;
+      allow update, delete: if isOwner();
+    }
+
+    // ── Transactions ────────────────────────────────────────────────────
+    match /transactions/{txId} {
+      allow read: if isOwner();
+      allow create: if isNewOwner()
+          && request.resource.data.type in ['income', 'expense', 'transfer']
+          && validMoney(request.resource.data.amount)
+          && request.resource.data.date is timestamp;
+      allow update, delete: if isOwner();
+    }
+
+    // ── Recurring Templates ─────────────────────────────────────────────
+    match /recurringTemplates/{rtId} {
+      allow read: if isOwner();
+      allow create: if isNewOwner()
+          && request.resource.data.schedule.frequency in ['daily', 'weekly', 'monthly', 'custom'];
+      allow update, delete: if isOwner();
+    }
+
+    // ── Settings ────────────────────────────────────────────────────────
+    match /settings/{sid} {
+      allow read, write: if isSignedIn() && sid == request.auth.uid;
+    }
+
+    // ── Idempotency store (server-managed) ──────────────────────────────
+    match /idempotency/{key} {
+      allow read, write: if isSignedIn()
+          && request.resource.data.userId == request.auth.uid;
     }
   }
 }

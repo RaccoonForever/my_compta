@@ -1,0 +1,10 @@
+FROM node:20-alpine
+
+RUN apk add --no-cache git
+
+WORKDIR /app
+
+# Install pnpm via corepack
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+EXPOSE 3000

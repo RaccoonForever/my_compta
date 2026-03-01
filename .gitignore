@@ -7,3 +7,8 @@ __pycache__
 *.env
 serviceAccount*.json
 *.env.local
+apps/web/.env.local
+.pnpm-store
+packages
+pnpm-lock.yaml
+pnpm-workspace.yaml

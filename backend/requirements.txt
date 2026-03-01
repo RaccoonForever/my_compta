@@ -1,8 +1,0 @@
-fastapi
-uvicorn[standard]
-pydantic
-pydantic-settings
-firebase-admin
-python-dotenv
-pytest
-pytest-asyncio
