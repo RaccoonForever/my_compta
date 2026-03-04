@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { getDashboard, getTransactions } from '@/lib/api';
+import { getDashboardFromAccounts, getTransactions } from '@/lib/api';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
@@ -25,7 +25,7 @@ function SummaryCard({ title, children }: { title: string; children: React.React
 export default function DashboardPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['dashboard'],
-    queryFn: getDashboard,
+    queryFn: getDashboardFromAccounts,
   });
 
   const { data: allTransactions = [] } = useQuery({
@@ -48,56 +48,85 @@ export default function DashboardPage() {
     .filter(tx => tx.date && typeof tx.date === 'string')
     .sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
 
-  // Compute each account's original opening balance:
-  // openingBalance = currentBalance - sum(all past transactions for that account)
-  const pastTxSumByAccount: Record<string, number> = {};
-  sortedTransactions.forEach(tx => {
-    const txDate = parseISO(tx.date);
-    if (txDate > today) return;
-    if (tx.type === 'income') pastTxSumByAccount[tx.accountId] = (pastTxSumByAccount[tx.accountId] ?? 0) + tx.amount;
-    else if (tx.type === 'expense') pastTxSumByAccount[tx.accountId] = (pastTxSumByAccount[tx.accountId] ?? 0) - tx.amount;
-  });
-
-  // For each display day, balance = sum of opening balances of accounts created on/before that day
-  //                                + sum of all transactions on/before that day
-  const getBalanceAtDate = (d: Date): number => {
+  // For each display day and account, balance = opening balance of that account on/before that day
+  //                                           + sum of transactions for that account on/before that day
+  const getBalanceAtDate = (d: Date, accountId?: string): number => {
     const dEnd = new Date(d);
     dEnd.setHours(23, 59, 59, 999);
 
-    // Sum opening balances of accounts that existed by this date
     let balance = 0;
-    data.accounts.forEach(acc => {
-      // If createdAt missing, assume account always existed
+
+    // If accountId specified, get balance for that account only
+    if (accountId) {
+      const acc = data.accounts.find(a => a.id === accountId);
+      if (!acc) return 0;
+
       const createdAt = acc.createdAt ? (typeof acc.createdAt === 'string' ? parseISO(acc.createdAt) : new Date(acc.createdAt)) : ninetyDaysAgo;
       if (createdAt <= dEnd) {
-        const openingBalance = acc.balance - (pastTxSumByAccount[acc.id] ?? 0);
-        balance += openingBalance;
+        balance = acc.balance;
       }
-    });
 
-    // Add all transactions up to this date
-    sortedTransactions.forEach(tx => {
-      const txDate = parseISO(tx.date);
-      if (txDate <= dEnd) {
-        if (tx.type === 'income') balance += tx.amount;
-        else if (tx.type === 'expense') balance -= tx.amount;
-      }
-    });
+      sortedTransactions.forEach(tx => {
+        if (tx.accountId === accountId) {
+          const txDate = parseISO(tx.date);
+          if (txDate <= dEnd) {
+            if (tx.type === 'income') balance += tx.amount;
+            else if (tx.type === 'expense') balance -= tx.amount;
+          }
+        }
+      });
+    } else {
+      // Sum opening balances of all accounts that existed by this date
+      data.accounts.forEach(acc => {
+        const createdAt = acc.createdAt ? (typeof acc.createdAt === 'string' ? parseISO(acc.createdAt) : new Date(acc.createdAt)) : ninetyDaysAgo;
+        if (createdAt <= dEnd) {
+          balance += acc.balance;
+        }
+      });
+
+      // Add all transactions up to this date
+      sortedTransactions.forEach(tx => {
+        const txDate = parseISO(tx.date);
+        if (txDate <= dEnd) {
+          if (tx.type === 'income') balance += tx.amount;
+          else if (tx.type === 'expense') balance -= tx.amount;
+        }
+      });
+    }
 
     return balance;
   };
 
+  // Color palette for accounts
+  const accountColors = [
+    '#3b82f6', // blue
+    '#ef4444', // red
+    '#10b981', // emerald
+    '#f59e0b', // amber
+    '#8b5cf6', // violet
+    '#ec4899', // pink
+    '#06b6d4', // cyan
+    '#14b8a6', // teal
+  ];
+
   // Build chart data: 7 days back → today + 90 days forward
-  const chartData: Array<{ date: string; dateLabel: string; balance: number }> = [];
+  const chartData: Array<{ date: string; dateLabel: string; balance: number; [key: string]: string | number }> = [];
   const ninetyDaysFromNow = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000);
 
   const histDate = new Date(sevenDaysAgo);
   while (histDate <= ninetyDaysFromNow) {
-    chartData.push({
+    const dataPoint: any = {
       date: format(histDate, 'yyyy-MM-dd'),
       dateLabel: format(histDate, 'dd MMM'),
       balance: getBalanceAtDate(histDate),
+    };
+
+    // Add balance for each account
+    data.accounts.forEach((acc) => {
+      dataPoint[`account_${acc.id}`] = getBalanceAtDate(histDate, acc.id);
     });
+
+    chartData.push(dataPoint);
     histDate.setDate(histDate.getDate() + 1);
   }
 
@@ -139,7 +168,30 @@ export default function DashboardPage() {
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip formatter={(v: number) => new Intl.NumberFormat(undefined).format(v)} />
             <Legend />
-            <Line type="monotone" dataKey="balance" stroke="#4f46e5" dot={false} strokeWidth={2} name="Balance" />
+            {/* Total balance line (bold) */}
+            <Line 
+              type="monotone" 
+              dataKey="balance" 
+              stroke="#1f2937" 
+              dot={false} 
+              strokeWidth={3} 
+              name="Total Balance"
+              legendType="line"
+            />
+            {/* Individual account lines */}
+            {data.accounts.map((acc, idx) => (
+              <Line
+                key={acc.id}
+                type="monotone"
+                dataKey={`account_${acc.id}`}
+                stroke={accountColors[idx % accountColors.length]}
+                dot={false}
+                strokeWidth={2}
+                name={acc.name}
+                strokeDasharray="5 5"
+                legendType="line"
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>

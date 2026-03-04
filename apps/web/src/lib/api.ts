@@ -61,12 +61,76 @@ export const getDashboard = () => request<DashboardResponse>('/dashboard');
 // ── Accounts ───────────────────────────────────────────────────────────
 export const getAccounts = (includeArchived = false) =>
   request<AccountResponse[]>(`/accounts?includeArchived=${includeArchived}`);
+export const getAccountDetail = (id: string) =>
+  request<AccountDetailResponse>(`/accounts/${id}/detail`);
 export const createAccount = (body: CreateAccountBody) =>
   request<AccountResponse>('/accounts', { method: 'POST', body: JSON.stringify(body) });
 export const updateAccount = (id: string, body: Partial<CreateAccountBody>) =>
   request<AccountResponse>(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const archiveAccount = (id: string) =>
   request<AccountResponse>(`/accounts/${id}`, { method: 'DELETE' });
+
+/**
+ * Fetch dashboard data by aggregating AccountDetailService results for all accounts.
+ * Replaces the previous getDashboard call to use account-scoped data directly.
+ */
+export async function getDashboardFromAccounts(): Promise<DashboardResponse> {
+  const accounts = await getAccounts();
+  if (accounts.length === 0) {
+    return {
+      totalCash: 0,
+      baseCurrency: 'CHF',
+      endOfMonthProjection: 0,
+      mtd: { income: 0, expenses: 0 },
+      accounts: [],
+      forecast: { points: [], markers: [], lowestPointDate: '', lowestBalance: 0 },
+      categoryBreakdown: [],
+    };
+  }
+
+  const accountDetails = await Promise.all(accounts.map(acc => getAccountDetail(acc.id)));
+
+  // Aggregate data from all accounts
+  let totalCash = 0;
+  let endOfMonthProjection = 0;
+  let totalMtdIncome = 0;
+  let totalMtdExpenses = 0;
+  const categoryBreakdownMap = new Map<string | null, number>();
+  const baseCurrency = accountDetails[0]?.baseCurrency ?? 'CHF';
+
+  accountDetails.forEach(detail => {
+    if (detail) {
+      totalCash += detail.currentBalance;
+      endOfMonthProjection += detail.endOfMonthProjection;
+      totalMtdIncome += detail.mtd.income;
+      totalMtdExpenses += detail.mtd.expenses;
+
+      // Aggregate category breakdown
+      detail.categoryBreakdown.forEach(item => {
+        const key = item.categoryId ?? null;
+        categoryBreakdownMap.set(key, (categoryBreakdownMap.get(key) ?? 0) + item.total);
+      });
+    }
+  });
+
+  const categoryBreakdown = Array.from(categoryBreakdownMap.entries()).map(([categoryId, total]) => ({
+    categoryId,
+    total,
+  }));
+
+  // Merge forecasts from all accounts (simplified: just take first account's forecast)
+  const forecast = accountDetails[0]?.forecast ?? { points: [], markers: [], lowestPointDate: '', lowestBalance: 0 };
+
+  return {
+    totalCash,
+    baseCurrency,
+    endOfMonthProjection,
+    mtd: { income: totalMtdIncome, expenses: totalMtdExpenses },
+    accounts,
+    forecast,
+    categoryBreakdown,
+  };
+}
 
 // ── Transactions ────────────────────────────────────────────────────────
 export const getTransactions = (params?: TransactionFilters) => {
@@ -126,6 +190,16 @@ export const updateSettings = (body: Partial<UserSettings>) =>
 export interface AccountResponse {
   id: string; name: string; type: string; currency: string;
   balance: number; isArchived: boolean; createdAt: string; updatedAt: string;
+}
+export interface AccountDetailResponse {
+  account: { id: string; name: string; currency: string; balance: number; type: string; createdAt: string };
+  baseCurrency: string;
+  currentBalance: number;
+  endOfMonthProjection: number;
+  mtd: { income: number; expenses: number };
+  forecast: { points: Array<{ date: string; balance: number }>; markers: Array<{ date: string; label: string; amount: { value: number; currency: string }; source: string }>; lowestPointDate: string; lowestBalance: number };
+  categoryBreakdown: Array<{ categoryId: string | null; total: number }>;
+  recentTransactions: Array<{ id: string; type: string; amount: number; currency: string; date: string; label: string; categoryId?: string }>;
 }
 export interface CreateAccountBody {
   name: string; type: string; currency: string; balance?: number; createdAt?: string;

@@ -13,9 +13,11 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../../infrastructure/http/guards/AuthGuard.js';
 import { AccountsService } from './accounts.service.js';
+import { AccountDetailService } from './account-detail.service.js';
 import { CreateAccountDto } from './dto/CreateAccountDto.js';
 import { UpdateAccountDto } from './dto/UpdateAccountDto.js';
 import { AccountResponseDto } from './dto/AccountResponseDto.js';
+import { AccountDetailResponseDto } from './dto/AccountDetailResponseDto.js';
 
 interface AuthRequest { user: { uid: string } }
 
@@ -24,7 +26,10 @@ interface AuthRequest { user: { uid: string } }
 @UseGuards(AuthGuard)
 @Controller({ path: 'accounts', version: '1' })
 export class AccountsController {
-  constructor(private readonly accountsService: AccountsService) {}
+  constructor(
+    private readonly accountsService: AccountsService,
+    private readonly accountDetailService: AccountDetailService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create an account' })
@@ -58,6 +63,16 @@ export class AccountsController {
   ): Promise<AccountResponseDto> {
     const account = await this.accountsService.findById(req.user.uid, id);
     return AccountResponseDto.from(account.toPrimitives());
+  }
+
+  @Get(':id/detail')
+  @ApiOperation({ summary: 'Get account detail with dashboard-like data (balance, forecast, category breakdown)' })
+  async getDetail(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ): Promise<AccountDetailResponseDto> {
+    const detail = await this.accountDetailService.getAccountDetail(req.user.uid, id);
+    return AccountDetailResponseDto.from(detail);
   }
 
   @Patch(':id')

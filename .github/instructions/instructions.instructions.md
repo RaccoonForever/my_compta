@@ -33,7 +33,6 @@ The AI **must consult this file first** when:
 
 When generating, modifying, or explaining code, the AI must:
 
-### ✔ Always confirm behavior matches FEATURES_LIST.md 
 ### ✔ Always use TypeScript for backend code  
 ### ✔ Always follow hexagonal architecture  
 ### ✔ Always maintain clean separation of responsibilities  
@@ -45,7 +44,6 @@ When generating, modifying, or explaining code, the AI must:
 
 # 6. 🚫 What the AI Must Never Do
 
-- ❌ Invent new features not in FEATURES_LIST.md  
 - ❌ Bypass domain logic by putting business rules in controllers  
 - ❌ Mix UI business logic with backend logic  
 - ❌ Put Firebase code inside domain layer  

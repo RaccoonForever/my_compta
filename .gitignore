@@ -12,3 +12,5 @@ apps/web/.env.local
 packages
 pnpm-lock.yaml
 pnpm-workspace.yaml
+infra/firebase/.emulator-data
+*.log
