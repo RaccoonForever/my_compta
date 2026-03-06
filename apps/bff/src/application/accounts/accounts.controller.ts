@@ -96,4 +96,14 @@ export class AccountsController {
     return AccountResponseDto.from(account.toPrimitives());
   }
 
+  @Delete(':id/transactions')
+  @ApiOperation({ summary: 'Delete all transactions linked to an account' })
+  async clearTransactions(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ): Promise<{ deletedCount: number }> {
+    const deletedCount = await this.accountsService.clearTransactions(req.user.uid, id);
+    return { deletedCount };
+  }
+
 }

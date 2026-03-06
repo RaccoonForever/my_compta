@@ -5,6 +5,7 @@ export class TransactionResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() accountId!: string;
   @ApiPropertyOptional() categoryId?: string;
+  @ApiPropertyOptional() subcategory?: string;
   @ApiProperty() type!: string;
   @ApiProperty() amount!: number;
   @ApiProperty() currency!: string;
@@ -21,6 +22,7 @@ export class TransactionResponseDto {
     dto.id = p.id;
     dto.accountId = p.accountId;
     dto.categoryId = p.categoryId;
+    dto.subcategory = p.subcategory;
     dto.type = p.type;
     dto.amount = p.amount.value;
     dto.currency = p.amount.currency;

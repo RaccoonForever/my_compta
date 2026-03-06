@@ -15,12 +15,14 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../../infrastructure/http/guards/AuthGuard.js';
 import { TransactionsService } from './transactions.service.js';
+import { TransactionImportService } from './transaction-import.service.js';
 import { CreateTransactionDto } from './dto/CreateTransactionDto.js';
 import { UpdateTransactionDto } from './dto/UpdateTransactionDto.js';
 import {
   AutocompleteResponseDto,
   TransactionResponseDto,
 } from './dto/TransactionResponseDto.js';
+import { ImportSummary, ConfirmImportRequest, ConfirmImportResponse } from './dto/ImportTransactionDto.js';
 
 interface AuthRequest { user: { uid: string } }
 
@@ -29,7 +31,10 @@ interface AuthRequest { user: { uid: string } }
 @UseGuards(AuthGuard)
 @Controller({ path: 'transactions', version: '1' })
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(
+    private readonly transactionsService: TransactionsService,
+    private readonly importService: TransactionImportService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Add a transaction (income or expense)' })
@@ -111,5 +116,29 @@ export class TransactionsController {
     @Param('id') id: string,
   ): Promise<void> {
     await this.transactionsService.delete(req.user.uid, id);
+  }
+
+  @Post('import/validate')
+  @ApiOperation({
+    summary: 'Validate and preview CSV import without committing to database',
+  })
+  async validateImport(
+    @Body() dto: { csvContent: string },
+  ): Promise<ImportSummary> {
+    // The import service does not access the database during validation
+    // It only parses and validates the CSV structure and content
+    const summary = await this.importService.parseAndValidateCsv(dto.csvContent);
+    return summary;
+  }
+
+  @Post('import/confirm')
+  @ApiOperation({
+    summary: 'Confirm and save validated CSV import to database',
+  })
+  async confirmImport(
+    @Request() req: AuthRequest,
+    @Body() dto: ConfirmImportRequest,
+  ): Promise<ConfirmImportResponse> {
+    return this.importService.confirmImport(req.user.uid, dto);
   }
 }

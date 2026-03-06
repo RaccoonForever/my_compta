@@ -9,9 +9,14 @@ import {
   createAccount,
   updateAccount,
   archiveAccount,
+  clearAccountTransactions,
+  confirmCsvImport,
   type AccountResponse,
   type CreateAccountBody,
+  type ImportSummary,
 } from '@/lib/api';
+import { ImportModal } from '@/components/ImportModal';
+import { ConfirmationModal } from '@/components/ConfirmationModal';
 
 const ACCOUNT_TYPES = ['bank', 'wallet', 'envelope', 'crypto', 'broker'];
 const ACCOUNT_USAGES = ['Savings', 'Checking', 'Investment', 'Emergency Fund', 'Travel', 'Business'];
@@ -21,6 +26,10 @@ export default function AccountsPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<AccountResponse | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [selectedAccountForImport, setSelectedAccountForImport] = useState<string>('');
+  const [clearTxAccount, setClearTxAccount] = useState<AccountResponse | null>(null);
+  const [clearTxError, setClearTxError] = useState<string | null>(null);
   const [form, setForm] = useState<CreateAccountBody & { usage?: string[] }>({ name: '', type: 'bank', currency: 'CHF', balance: 0, usage: [], createdAt: new Date().toISOString().split('T')[0] });
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => getSettings() });
@@ -41,6 +50,38 @@ export default function AccountsPage() {
         return sum;
       }, 0);
     return acc.balance + txSum;
+  };
+
+  const handleImportConfirm = async (summary: ImportSummary) => {
+    if (!selectedAccountForImport) {
+      throw new Error('No account selected for import');
+    }
+
+    const result = await confirmCsvImport({
+      summary,
+      accountId: selectedAccountForImport,
+      autoMapCategories: true,
+      skipDuplicateCheck: false,
+    });
+
+    console.log('Import completed:', result);
+
+    // Refresh transactions and accounts data
+    await qc.invalidateQueries({ queryKey: ['transactions'] });
+    await qc.invalidateQueries({ queryKey: ['accounts'] });
+
+    // Check results and throw error if needed
+    if (result.failedCount > 0 && result.createdCount === 0) {
+      throw new Error(`Failed to import all transactions: ${result.errors?.join(', ') || 'Unknown error'}`);
+    }
+
+    // Return the result so the modal can display it
+    return result;
+  };
+
+  const openImportModal = (accountId: string) => {
+    setSelectedAccountForImport(accountId);
+    setImportModalOpen(true);
   };
 
   // Initialize form currency from settings
@@ -76,10 +117,32 @@ export default function AccountsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['accounts'] }),
   });
 
+  const clearTxMut = useMutation({
+    mutationFn: (accountId: string) => clearAccountTransactions(accountId),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['transactions'] });
+      await qc.invalidateQueries({ queryKey: ['accounts'] });
+      await qc.invalidateQueries({ queryKey: ['dashboard'] });
+      setClearTxError(null);
+      setClearTxAccount(null);
+    },
+    onError: (error: Error) => {
+      setClearTxError(error.message || 'Failed to clear account transactions');
+    },
+  });
+
   const openEdit = (acc: AccountResponse) => {
     setEditing(acc);
     setForm({ name: acc.name, type: acc.type, currency: acc.currency });
     setShowForm(true);
+  };
+
+  const getAccountTransactionCount = (accountId: string) =>
+    transactions.filter(tx => tx.accountId === accountId).length;
+
+  const handleConfirmClearTransactions = async () => {
+    if (!clearTxAccount) return;
+    await clearTxMut.mutateAsync(clearTxAccount.id);
   };
 
   if (isLoading) return <div className="p-8 text-slate-400">Loading…</div>;
@@ -183,9 +246,21 @@ export default function AccountsPage() {
                 <p className="font-semibold text-slate-800">{acc.name}</p>
                 <p className="text-xs text-slate-400">{acc.type.charAt(0).toUpperCase() + acc.type.slice(1)} · {acc.currency}</p>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => openEdit(acc)} className="text-xs text-primary-600 hover:underline">Edit</button>
-                <button onClick={() => void archiveMut.mutate(acc.id)} className="text-xs text-slate-400 hover:text-red-500">Archive</button>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex gap-2">
+                  <button onClick={() => openEdit(acc)} className="text-xs text-primary-600 hover:underline">Edit</button>
+                  <button onClick={() => openImportModal(acc.id)} className="text-xs text-blue-600 hover:underline">Import</button>
+                  <button onClick={() => void archiveMut.mutate(acc.id)} className="text-xs text-slate-400 hover:text-red-500">Archive</button>
+                </div>
+                <button
+                  onClick={() => {
+                    setClearTxError(null);
+                    setClearTxAccount(acc);
+                  }}
+                  className="text-xs text-red-600 hover:underline"
+                >
+                  Clear Transactions
+                </button>
               </div>
             </div>
             <p className="text-3xl font-bold text-slate-900" data-amount>
@@ -209,6 +284,38 @@ export default function AccountsPage() {
           </div>
         </details>
       )}
+
+      <ImportModal
+        isOpen={importModalOpen}
+        accountId={selectedAccountForImport}
+        onClose={() => setImportModalOpen(false)}
+        onConfirm={handleImportConfirm}
+      />
+
+      <ConfirmationModal
+        open={!!clearTxAccount}
+        title={clearTxAccount ? `Clear all transactions for ${clearTxAccount.name}?` : 'Clear all transactions?'}
+        message={clearTxAccount
+          ? `This will permanently delete ${getAccountTransactionCount(clearTxAccount.id)} transaction(s) linked to this account. This action cannot be undone.`
+          : 'This action cannot be undone.'}
+        confirmText="Clear Transactions"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={clearTxMut.isPending}
+        onCancel={() => {
+          setClearTxError(null);
+          setClearTxAccount(null);
+        }}
+        onConfirm={() => {
+          void handleConfirmClearTransactions();
+        }}
+      >
+        {clearTxError && (
+          <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
+            {clearTxError}
+          </div>
+        )}
+      </ConfirmationModal>
     </div>
   );
 }

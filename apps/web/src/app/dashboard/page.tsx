@@ -69,7 +69,7 @@ export default function DashboardPage() {
       sortedTransactions.forEach(tx => {
         if (tx.accountId === accountId) {
           const txDate = parseISO(tx.date);
-          if (txDate <= dEnd) {
+          if (txDate >= createdAt && txDate <= dEnd) {
             if (tx.type === 'income') balance += tx.amount;
             else if (tx.type === 'expense') balance -= tx.amount;
           }
@@ -87,7 +87,12 @@ export default function DashboardPage() {
       // Add all transactions up to this date
       sortedTransactions.forEach(tx => {
         const txDate = parseISO(tx.date);
-        if (txDate <= dEnd) {
+        const txAccount = data.accounts.find(acc => acc.id === tx.accountId);
+        const txAccountCreatedAt = txAccount?.createdAt
+          ? (typeof txAccount.createdAt === 'string' ? parseISO(txAccount.createdAt) : new Date(txAccount.createdAt))
+          : ninetyDaysAgo;
+
+        if (txDate >= txAccountCreatedAt && txDate <= dEnd) {
           if (tx.type === 'income') balance += tx.amount;
           else if (tx.type === 'expense') balance -= tx.amount;
         }
@@ -96,6 +101,8 @@ export default function DashboardPage() {
 
     return balance;
   };
+
+  const getCurrentAccountBalance = (accountId: string): number => getBalanceAtDate(today, accountId);
 
   // Color palette for accounts
   const accountColors = [
@@ -204,7 +211,7 @@ export default function DashboardPage() {
             <div key={acc.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
               <p className="text-sm font-medium text-slate-700">{acc.name}</p>
               <p className="text-xs text-slate-400 capitalize mb-2">{acc.type} · {acc.currency}</p>
-              <Money value={acc.balance} currency={acc.currency} size="xl" />
+              <Money value={getCurrentAccountBalance(acc.id)} currency={acc.currency} size="xl" />
               {acc.createdAt && (
                 <p className="text-xs text-slate-400 mt-1">Opened {format(parseISO(acc.createdAt), 'dd MMM yyyy')}</p>
               )}

@@ -47,6 +47,12 @@ export class CreateTransactionDto {
   @IsString()
   categoryId?: string;
 
+  @ApiPropertyOptional({ example: 'Groceries' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  subcategory?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

@@ -5,6 +5,7 @@ import {
   MinLength,
   MaxLength,
   Matches,
+  IsArray,
 } from 'class-validator';
 
 export class UpdateCategoryDto {
@@ -20,4 +21,10 @@ export class UpdateCategoryDto {
   @IsString()
   @Matches(/^#[0-9a-fA-F]{6}$/, { message: 'color must be a valid hex color' })
   color?: string;
+
+  @ApiPropertyOptional({ example: ['Rent', 'Mortgage'], description: 'Subcategories' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  subcategories?: string[];
 }

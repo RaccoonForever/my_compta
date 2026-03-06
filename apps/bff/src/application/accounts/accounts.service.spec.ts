@@ -41,6 +41,13 @@ function makeAccountRepo() {
   };
 }
 
+function makeTransactionRepo() {
+  return {
+    findByUser: vi.fn().mockResolvedValue([]),
+    delete: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 function makeIdGenerator(id = 'generated-id') {
   return { generate: vi.fn().mockReturnValue(id) };
 }
@@ -50,13 +57,15 @@ function makeIdGenerator(id = 'generated-id') {
 describe('AccountsService', () => {
   let service: AccountsService;
   let accountRepo: ReturnType<typeof makeAccountRepo>;
+  let txRepo: ReturnType<typeof makeTransactionRepo>;
   let idGen: ReturnType<typeof makeIdGenerator>;
 
   beforeEach(() => {
     accountRepo = makeAccountRepo();
+    txRepo = makeTransactionRepo();
     idGen = makeIdGenerator('new-acc-id');
 
-    service = new AccountsService(accountRepo as any, idGen as any);
+    service = new AccountsService(accountRepo as any, txRepo as any, idGen as any);
   });
 
   // ── create ────────────────────────────────────────────────────────────────
@@ -151,6 +160,32 @@ describe('AccountsService', () => {
 
       expect(accountRepo.save).toHaveBeenCalledOnce();
       expect(archived.isArchived).toBe(true);
+    });
+  });
+
+  describe('clearTransactions', () => {
+    it('throws NotFoundError when account does not exist', async () => {
+      accountRepo.findById.mockResolvedValue(null);
+
+      await expect(service.clearTransactions('user-1', 'acc-missing')).rejects.toThrow(NotFoundError);
+    });
+
+    it('deletes all transactions linked to account and returns count', async () => {
+      accountRepo.findById.mockResolvedValue(makeAccount({ id: 'acc-1' }));
+      txRepo.findByUser.mockResolvedValue([
+        { id: 'tx-1' },
+        { id: 'tx-2' },
+        { id: 'tx-3' },
+      ]);
+
+      const deletedCount = await service.clearTransactions('user-1', 'acc-1');
+
+      expect(txRepo.findByUser).toHaveBeenCalledWith('user-1', { accountId: 'acc-1' });
+      expect(txRepo.delete).toHaveBeenCalledTimes(3);
+      expect(txRepo.delete).toHaveBeenCalledWith('user-1', 'tx-1');
+      expect(txRepo.delete).toHaveBeenCalledWith('user-1', 'tx-2');
+      expect(txRepo.delete).toHaveBeenCalledWith('user-1', 'tx-3');
+      expect(deletedCount).toBe(3);
     });
   });
 

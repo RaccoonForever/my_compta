@@ -87,16 +87,17 @@ export class AccountDetailService {
       total,
     }));
 
-    // Current balance: account's current balance is used directly
-    // (transactions are already reflected in the account balance by the frontend)
+    // Current balance: opening balance + realized transactions up to now
     const txDeltaFromNow = allTxsToNow.reduce((sum, tx) => {
       const delta = tx.type === 'income' ? tx.amount.value : -tx.amount.value;
       return sum + delta;
     }, 0);
 
+    const currentBalanceInAccountCurrency = account.balance + txDeltaFromNow;
+
     const currentBalance = account.currency === baseCurrency
-      ? account.balance
-      : account.balance * (fxRates[account.currency] ?? 1);
+      ? currentBalanceInAccountCurrency
+      : currentBalanceInAccountCurrency * (fxRates[account.currency] ?? 1);
 
     // EOM projection
     const eomTxDelta = allTxsToEom.reduce((sum, tx) => {
@@ -105,9 +106,10 @@ export class AccountDetailService {
       return sum + delta;
     }, 0);
 
+    const endOfMonthProjectionInAccountCurrency = account.balance + eomTxDelta;
     const endOfMonthProjection = account.currency === baseCurrency
-      ? account.balance + eomTxDelta - txDeltaFromNow
-      : (account.balance + eomTxDelta - txDeltaFromNow) * (fxRates[account.currency] ?? 1);
+      ? endOfMonthProjectionInAccountCurrency
+      : endOfMonthProjectionInAccountCurrency * (fxRates[account.currency] ?? 1);
 
     // Forecast for next 90 days
     const forecastEnd = new Date(now);

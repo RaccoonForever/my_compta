@@ -23,6 +23,7 @@ export class FirestoreCategoryRepository implements CategoryRepository {
       userId: data['userId'] as string,
       name: data['name'] as string,
       kind: data['kind'] as CategoryKind,
+      subcategories: data['subcategories'] as string[] | undefined,
       color: data['color'] as string | undefined,
       isArchived: data['isArchived'] as boolean,
       createdAt: toDate(data['createdAt'] as admin.firestore.Timestamp),
@@ -31,10 +32,18 @@ export class FirestoreCategoryRepository implements CategoryRepository {
 
   async save(category: Category): Promise<void> {
     const p = category.toPrimitives();
-    await this.col().doc(p.id).set({
-      ...p,
+    // Filter out undefined values to avoid Firestore errors
+    const data: Record<string, unknown> = {
+      userId: p.userId,
+      name: p.name,
+      kind: p.kind,
+      isArchived: p.isArchived,
       createdAt: p.createdAt,
-    });
+    };
+    if (p.color !== undefined) data['color'] = p.color;
+    if (p.subcategories !== undefined) data['subcategories'] = p.subcategories;
+    
+    await this.col().doc(p.id).set(data);
   }
 
   async findById(userId: string, id: string): Promise<Category | null> {

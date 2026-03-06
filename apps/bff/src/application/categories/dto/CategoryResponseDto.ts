@@ -6,6 +6,7 @@ export class CategoryResponseDto {
   @ApiProperty() name!: string;
   @ApiProperty({ enum: ['income', 'expense'] }) kind!: string;
   @ApiPropertyOptional() color?: string;
+  @ApiPropertyOptional({ type: [String] }) subcategories?: string[];
   @ApiProperty() isArchived!: boolean;
   @ApiProperty() createdAt!: string;
 
@@ -15,6 +16,7 @@ export class CategoryResponseDto {
     dto.name = p.name;
     dto.kind = p.kind;
     dto.color = p.color;
+    dto.subcategories = p.subcategories;
     dto.isArchived = p.isArchived;
     dto.createdAt = p.createdAt.toISOString();
     return dto;

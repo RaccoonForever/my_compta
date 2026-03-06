@@ -31,6 +31,7 @@ export class CategoriesService {
       name: dto.name,
       kind: dto.kind,
       color: dto.color,
+      subcategories: dto.subcategories,
     });
     await this.categoryRepo.save(category);
     return category;

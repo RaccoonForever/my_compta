@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Account, NotFoundError } from '@my-compta/domain';
 import { AccountRepository, ACCOUNT_REPOSITORY } from '../ports/AccountRepository.js';
+import { TransactionRepository, TRANSACTION_REPOSITORY } from '../ports/TransactionRepository.js';
 import { IdGenerator, ID_GENERATOR } from '../ports/IdGenerator.js';
 import { CreateAccountDto } from './dto/CreateAccountDto.js';
 import { UpdateAccountDto } from './dto/UpdateAccountDto.js';
@@ -9,6 +10,7 @@ import { UpdateAccountDto } from './dto/UpdateAccountDto.js';
 export class AccountsService {
   constructor(
     @Inject(ACCOUNT_REPOSITORY) private readonly accountRepo: AccountRepository,
+    @Inject(TRANSACTION_REPOSITORY) private readonly txRepo: TransactionRepository,
     @Inject(ID_GENERATOR) private readonly idGenerator: IdGenerator,
   ) {}
 
@@ -50,6 +52,16 @@ export class AccountsService {
     const archived = account.archive();
     await this.accountRepo.save(archived);
     return archived;
+  }
+
+  async clearTransactions(userId: string, accountId: string): Promise<number> {
+    const account = await this.accountRepo.findById(userId, accountId);
+    if (!account) throw new NotFoundError('Account', accountId);
+
+    const transactions = await this.txRepo.findByUser(userId, { accountId });
+    await Promise.all(transactions.map(tx => this.txRepo.delete(userId, tx.id)));
+
+    return transactions.length;
   }
 
 }

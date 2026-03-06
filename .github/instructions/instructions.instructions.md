@@ -39,6 +39,8 @@ When generating, modifying, or explaining code, the AI must:
 ### ✔ Always ensure Firestore writes/queries follow security rules  
 ### ✔ Always write clear, typed, maintainable code  
 ### ✔ Always document decisions matching the spec files  
+### ✔ Always run tests inside the docker container and not rely on local environment (use docker directly and not docker-compose). Don't reinstall the environment with pnpm, just execute the tests.
+### ✔ Always add tests when coding new features or fixing bugs
 
 ---
 
@@ -63,10 +65,6 @@ The AI should:
 - Document any assumptions
 
 ---
-
-# 8. 🧭 Summary for Copilot
-
-> **Your job is to use FEATURES_LIST.md + WIREFRAMES.md + TECHNICAL.md as the complete authoritative specification for this project. All code must satisfy all three documents, with no contradictions.**
 
 If an instruction or implementation cannot be resolved, the AI should:
 1. Explain the ambiguity

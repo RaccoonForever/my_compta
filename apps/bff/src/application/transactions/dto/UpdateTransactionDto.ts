@@ -39,6 +39,12 @@ export class UpdateTransactionDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(64)
+  subcategory?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   @MaxLength(512)
   note?: string;
 }

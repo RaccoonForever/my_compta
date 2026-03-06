@@ -69,6 +69,8 @@ export const updateAccount = (id: string, body: Partial<CreateAccountBody>) =>
   request<AccountResponse>(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const archiveAccount = (id: string) =>
   request<AccountResponse>(`/accounts/${id}`, { method: 'DELETE' });
+export const clearAccountTransactions = (id: string) =>
+  request<{ deletedCount: number }>(`/accounts/${id}/transactions`, { method: 'DELETE' });
 
 /**
  * Fetch dashboard data by aggregating AccountDetailService results for all accounts.
@@ -145,6 +147,11 @@ export const updateTransaction = (id: string, body: Partial<CreateTransactionBod
   request<TransactionResponse>(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const deleteTransaction = (id: string) =>
   request<void>(`/transactions/${id}`, { method: 'DELETE' });
+
+export const deleteMultipleTransactions = async (ids: string[]) => {
+  await Promise.all(ids.map(id => deleteTransaction(id)));
+};
+
 export const autocomplete = (q: string) =>
   request<AutocompleteResult[]>(`/transactions/autocomplete?q=${encodeURIComponent(q)}`);
 
@@ -159,6 +166,28 @@ export const deleteCategory = (id: string) =>
   request<void>(`/categories/${id}`, { method: 'DELETE' });
 export const seedDefaultCategories = () =>
   request<{ seeded: boolean }>('/categories/seed-defaults', { method: 'POST', body: JSON.stringify({}) });
+
+export interface ImportCategoryRow {
+  rowNumber: number; category: string; subcategory?: string;
+  kind: 'income' | 'expense'; occurrences: number; alreadyExists: boolean;
+  selected: boolean; warnings?: string[];
+}
+
+export interface CategoryImportSummary {
+  totalPairs: number; newCategoriesCount: number; existingPairsCount: number;
+  newSubcategoriesCount: number; rows: ImportCategoryRow[];
+  groupedByCategory: Array<{ category: string; kind: 'income' | 'expense'; subcategories: Array<{ name: string; exists: boolean }>; count: number; exists: boolean; }>;
+}
+
+export interface ConfirmCategoryImportResponse {
+  categoriesCreated: number; categoriesUpdated: number; categoryIds: string[]; errors?: string[];
+}
+
+export const extractCategoriesFromCSV = (csv: string) =>
+  request<CategoryImportSummary>('/categories/import/extract', { method: 'POST', body: JSON.stringify({ csv }) });
+
+export const confirmCategoryImport = (rows: ImportCategoryRow[]) =>
+  request<ConfirmCategoryImportResponse>('/categories/import/confirm', { method: 'POST', body: JSON.stringify({ rows }) });
 
 // ── Recurring ───────────────────────────────────────────────────────────
 export const getRecurringTemplates = () => request<RecurringTemplateResponse[]>('/recurring');
@@ -205,14 +234,14 @@ export interface CreateAccountBody {
   name: string; type: string; currency: string; balance?: number; createdAt?: string;
 }
 export interface TransactionResponse {
-  id: string; accountId: string; categoryId?: string; type: string;
+  id: string; accountId: string; categoryId?: string; subcategory?: string; type: string;
   amount: number; currency: string; date: string; label: string;
   note?: string;
   createdAt: string; updatedAt: string;
 }
 export interface CreateTransactionBody {
   amount: number; currency: string; type: string; date: string;
-  accountId: string; label: string; categoryId?: string; note?: string;
+  accountId: string; label: string; categoryId?: string; subcategory?: string; note?: string;
 }
 export interface TransactionFilters {
   accountId?: string; categoryId?: string; type?: string;
@@ -223,10 +252,10 @@ export interface AutocompleteResult {
 }
 export interface CategoryResponse {
   id: string; name: string; kind: string; color?: string;
-  isArchived: boolean; createdAt: string;
+  subcategories?: string[]; isArchived: boolean; createdAt: string;
 }
 export interface CreateCategoryBody {
-  name: string; kind: 'income' | 'expense'; color?: string;
+  name: string; kind: 'income' | 'expense'; color?: string; subcategories?: string[];
 }
 export interface RecurringTemplateResponse {
   id: string; label: string; amount: number; currency: string; type: string;
@@ -258,3 +287,69 @@ export interface NetCashflowResponse {
 export interface UserSettings {
   baseCurrency: string; fxRates: Record<string, number>; privacyMode: boolean;
 }
+
+// ── Transaction Import ─────────────────────────────────────────────────
+export interface ImportRowResult {
+  rowNumber: number;
+  success: boolean;
+  transaction?: {
+    date: string;
+    amount: number;
+    label: string;
+    type: 'income' | 'expense' | 'transfer';
+    category?: string;
+    subcategory?: string;
+    reference?: string;
+    notes?: string;
+    operationType?: string;
+  };
+  error?: string;
+  warnings?: string[];
+  rawRow?: string[];
+}
+
+export interface ImportSummary {
+  totalRows: number;
+  successCount: number;
+  errorCount: number;
+  warningCount: number;
+  results: ImportRowResult[];
+  issueSummary?: {
+    invalidAmounts: number;
+    invalidDates: number;
+    missingCategories: number;
+    otherErrors: number;
+  };
+}
+
+/**
+ * Validate CSV import without committing to database
+ * Returns detailed summary of parsing and validation results
+ */
+export const validateCsvImport = (csvContent: string) =>
+  request<ImportSummary>('/transactions/import/validate', {
+    method: 'POST',
+    body: JSON.stringify({ csvContent }),
+  });
+
+/**
+ * Confirm and save validated CSV import to database
+ * Takes the validated summary and creates transactions
+ */
+export const confirmCsvImport = (importRequest: {
+  summary: ImportSummary;
+  accountId: string;
+  autoMapCategories?: boolean;
+  skipDuplicateCheck?: boolean;
+}) =>
+  request<{
+    createdCount: number;
+    skippedCount: number;
+    failedCount: number;
+    transactionIds: string[];
+    errors?: string[];
+  }>('/transactions/import/confirm', {
+    method: 'POST',
+    body: JSON.stringify(importRequest),
+  });
+

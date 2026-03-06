@@ -165,4 +165,78 @@ describe('DashboardService (Refactored)', () => {
     expect(result.mtd.income).toBe(0);
     expect(result.mtd.expenses).toBe(0);
   });
+
+  it('rounds aggregated monetary values to 2 decimals', async () => {
+    const accounts = [
+      makeAccount({ id: 'acc-1' }),
+      makeAccount({ id: 'acc-2' }),
+    ];
+
+    const detailsMap = new Map([
+      ['acc-1', { account: { id: 'acc-1' }, baseCurrency: 'CHF', currentBalance: 1000.105, endOfMonthProjection: 1000.335, mtd: { income: 100.111, expenses: 50.555 }, forecast: { points: [], markers: [], lowestPointDate: '', lowestBalance: 1000 }, categoryBreakdown: [], recentTransactions: [] }],
+      ['acc-2', { account: { id: 'acc-2' }, baseCurrency: 'CHF', currentBalance: 600.205, endOfMonthProjection: 700.335, mtd: { income: 10.114, expenses: 0.444 }, forecast: { points: [], markers: [], lowestPointDate: '', lowestBalance: 600 }, categoryBreakdown: [], recentTransactions: [] }],
+    ]);
+
+    const service = new DashboardService(
+      makeAccountRepo(accounts) as any,
+      makeAccountDetailService(detailsMap) as any,
+    );
+
+    const result = await service.getDashboard('user-1', REF_NOW);
+    expect(result.totalCash).toBe(1600.31);
+    expect(result.endOfMonthProjection).toBe(1700.67);
+    expect(result.mtd.income).toBe(110.23);
+    expect(result.mtd.expenses).toBe(51);
+  });
+
+  it('falls back to CHF when no account detail exists', async () => {
+    const accounts = [makeAccount({ id: 'acc-1' })];
+    const detailService = {
+      getAccountDetail: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new DashboardService(
+      makeAccountRepo(accounts) as any,
+      detailService as any,
+    );
+
+    const result = await service.getDashboard('user-1', REF_NOW);
+    expect(result.baseCurrency).toBe('CHF');
+    expect(result.totalCash).toBe(0);
+    expect(result.endOfMonthProjection).toBe(0);
+  });
+
+  it('keeps first non-empty forecast when aggregating multiple accounts', async () => {
+    const accounts = [
+      makeAccount({ id: 'acc-1' }),
+      makeAccount({ id: 'acc-2' }),
+    ];
+
+    const firstForecast = {
+      points: [{ date: '2026-03-16', balance: 1200 }],
+      markers: [],
+      lowestPointDate: '2026-03-16',
+      lowestBalance: 1200,
+    };
+
+    const secondForecast = {
+      points: [{ date: '2026-03-16', balance: 900 }],
+      markers: [],
+      lowestPointDate: '2026-03-16',
+      lowestBalance: 900,
+    };
+
+    const detailsMap = new Map([
+      ['acc-1', { account: { id: 'acc-1' }, baseCurrency: 'CHF', currentBalance: 1000, endOfMonthProjection: 1100, mtd: { income: 0, expenses: 0 }, forecast: firstForecast, categoryBreakdown: [], recentTransactions: [] }],
+      ['acc-2', { account: { id: 'acc-2' }, baseCurrency: 'CHF', currentBalance: 500, endOfMonthProjection: 550, mtd: { income: 0, expenses: 0 }, forecast: secondForecast, categoryBreakdown: [], recentTransactions: [] }],
+    ]);
+
+    const service = new DashboardService(
+      makeAccountRepo(accounts) as any,
+      makeAccountDetailService(detailsMap) as any,
+    );
+
+    const result = await service.getDashboard('user-1', REF_NOW);
+    expect(result.forecast).toEqual(firstForecast);
+  });
 });

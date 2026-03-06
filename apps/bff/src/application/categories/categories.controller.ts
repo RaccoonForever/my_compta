@@ -19,9 +19,11 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../infrastructure/http/guards/AuthGuard.js';
 import { CategoriesService } from './categories.service.js';
+import { CategoryImportService } from './category-import.service.js';
 import { CreateCategoryDto } from './dto/CreateCategoryDto.js';
 import { UpdateCategoryDto } from './dto/UpdateCategoryDto.js';
 import { CategoryResponseDto } from './dto/CategoryResponseDto.js';
+import { CategoryImportSummary, ImportCategoryRow, ConfirmCategoryImportResponse } from './dto/ImportCategoryDto.js';
 
 interface AuthRequest {
   user: { uid: string };
@@ -32,7 +34,10 @@ interface AuthRequest {
 @UseGuards(AuthGuard)
 @Controller({ path: 'categories', version: '1' })
 export class CategoriesController {
-  constructor(private readonly categoriesService: CategoriesService) {}
+  constructor(
+    private readonly categoriesService: CategoriesService,
+    private readonly importService: CategoryImportService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a category' })
@@ -84,5 +89,37 @@ export class CategoriesController {
   async seedDefaults(@Request() req: AuthRequest): Promise<{ seeded: boolean }> {
     await this.categoriesService.seedDefaults(req.user.uid);
     return { seeded: true };
+  }
+
+  @Post('import/extract')
+  @ApiOperation({
+    summary: 'Extract categories from transaction CSV for review',
+  })
+  async extractCategories(
+    @Request() req: AuthRequest,
+    @Body() dto: { csv: string },
+  ): Promise<CategoryImportSummary> {
+    // Get existing categories to check for duplicates
+    const existingCategories = await this.categoriesService.list(req.user.uid, false);
+    const primitives = existingCategories.map(c => c.toPrimitives());
+
+    // Extract and validate
+    const summary = await this.importService.extractCategoriesFromCSV(
+      dto.csv,
+      primitives,
+    );
+
+    return summary;
+  }
+
+  @Post('import/confirm')
+  @ApiOperation({
+    summary: 'Confirm and save imported categories/subcategories',
+  })
+  async confirmCategoryImport(
+    @Request() req: AuthRequest,
+    @Body() dto: { rows: ImportCategoryRow[] },
+  ): Promise<ConfirmCategoryImportResponse> {
+    return this.importService.confirmCategoryImport(req.user.uid, dto.rows);
   }
 }

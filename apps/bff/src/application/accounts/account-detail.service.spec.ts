@@ -91,16 +91,15 @@ describe('AccountDetailService', () => {
   it('should compute current balance correctly', async () => {
     const detail = await service.getAccountDetail(userId, accountId, now);
 
-    expect(detail.currentBalance).toBe(1000); // Same as account balance in CHF
+    // opening 1000 + realized tx up to now ( +500 -100 ) = 1400
+    expect(detail.currentBalance).toBe(1400);
   });
 
   it('should compute end of month projection including future transactions', async () => {
     const detail = await service.getAccountDetail(userId, accountId, now);
 
-    // Account balance 1000 already includes past transactions (income 500 - expense 100)
-    // Future transaction within EOM: expense 50
-    // FX is CHF (1:1), so EOM projection = 1000 - 50 = 950
-    expect(detail.endOfMonthProjection).toBe(950);
+    // opening 1000 + all tx to EOM ( +500 -100 -50 ) = 1350
+    expect(detail.endOfMonthProjection).toBe(1350);
   });
 
   it('should generate category breakdown for MTD expenses', async () => {
@@ -148,8 +147,43 @@ describe('AccountDetailService', () => {
 
     const detail = await service.getAccountDetail(userId, 'acc-2', now);
 
-    // 1000 EUR * 0.95 = 950 CHF
-    expect(detail.currentBalance).toBe(950);
+    // current in EUR: 1000 + (500 - 100) = 1400, then FX to CHF: 1400 * 0.95 = 1330
+    expect(detail.currentBalance).toBe(1330);
+  });
+
+  it('should apply FX conversion to end of month projection for multi-currency account', async () => {
+    const eurAccount = Account.create({
+      id: 'acc-2',
+      userId,
+      name: 'EUR Account',
+      currency: 'EUR' as any,
+      balance: 1000,
+      type: 'checking',
+      createdAt: new Date('2023-06-01'),
+    });
+
+    mockAccountRepo = {
+      findById: vi.fn().mockResolvedValue(eurAccount),
+    } as Partial<AccountRepository> as AccountRepository;
+
+    service = new AccountDetailService(
+      mockAccountRepo,
+      mockTxRepo,
+      mockRecurringRepo,
+      mockDb,
+    );
+
+    const detail = await service.getAccountDetail(userId, 'acc-2', now);
+
+    // opening 1000 + all tx to EOM (+500 -100 -50)=1350 EUR, converted at 0.95 => 1282.5
+    expect(detail.endOfMonthProjection).toBe(1282.5);
+  });
+
+  it('should keep opening balance unchanged in account payload but compute current balance separately', async () => {
+    const detail = await service.getAccountDetail(userId, accountId, now);
+
+    expect(detail.account.balance).toBe(1000);
+    expect(detail.currentBalance).toBe(1400);
   });
 
   it('should throw when account not found', async () => {
@@ -167,6 +201,30 @@ describe('AccountDetailService', () => {
     await expect(
       service.getAccountDetail(userId, 'nonexistent', now),
     ).rejects.toThrow();
+  });
+
+  it('should fallback to default settings when settings document does not exist', async () => {
+    mockDb = {
+      collection: vi.fn().mockReturnValue({
+        doc: vi.fn().mockReturnValue({
+          get: vi.fn().mockResolvedValue({
+            exists: false,
+            data: () => undefined,
+          }),
+        }),
+      }),
+    } as Partial<admin.firestore.Firestore> as admin.firestore.Firestore;
+
+    service = new AccountDetailService(
+      mockAccountRepo,
+      mockTxRepo,
+      mockRecurringRepo,
+      mockDb,
+    );
+
+    const detail = await service.getAccountDetail(userId, accountId, now);
+    expect(detail.baseCurrency).toBe('CHF');
+    expect(detail.currentBalance).toBe(1400);
   });
 
   it('should handle accounts with no transactions', async () => {

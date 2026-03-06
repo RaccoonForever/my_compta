@@ -30,6 +30,7 @@ export class FirestoreTransactionRepository implements TransactionRepository {
       userId: data['userId'] as string,
       accountId: data['accountId'] as string,
       categoryId: data['categoryId'] as string | undefined,
+      subcategory: data['subcategory'] as string | undefined,
       type: data['type'] as TransactionType,
       amount: data['amount'] as TransactionPrimitives['amount'],
       date: (data['date'] as admin.firestore.Timestamp).toDate(),
