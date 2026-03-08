@@ -66,6 +66,7 @@ vi.mock('recharts', () => {
     Legend: Div,
     Line: Div,
     ReferenceLine: Div,
+    ReferenceArea: Div,
     LineChart: ({ data, children }: { data?: unknown; children?: React.ReactNode }) => {
       mocks.lineChartData = data;
       return <div data-testid="line-chart">{children}</div>;

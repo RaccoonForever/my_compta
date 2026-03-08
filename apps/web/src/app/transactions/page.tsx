@@ -213,34 +213,7 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex gap-2">
-        <button
-          onClick={() => setActiveTab('all')}
-          className={clsx(
-            'flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors',
-            activeTab === 'all'
-              ? 'bg-primary-600 text-white'
-              : 'text-slate-600 hover:bg-slate-50',
-          )}
-        >
-          All transactions
-        </button>
-        <button
-          onClick={() => setActiveTab('uncategorized')}
-          className={clsx(
-            'flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors',
-            activeTab === 'uncategorized'
-              ? 'bg-primary-600 text-white'
-              : 'text-slate-600 hover:bg-slate-50',
-          )}
-        >
-          Uncategorized ({uncategorizedTransactions.length})
-        </button>
-      </div>
-
       {/* Filters */}
-      {activeTab === 'all' && (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 grid grid-cols-2 md:grid-cols-7 gap-3">
         <select
           value={filters.accountId}
@@ -295,13 +268,35 @@ export default function TransactionsPage() {
           Clear
         </button>
       </div>
-      )}
+      <div className="text-xs text-slate-500 px-1">
+        Applied: {appliedSummary}
+      </div>
 
-      {activeTab === 'all' && (
-        <div className="text-xs text-slate-500 px-1">
-          Applied: {appliedSummary}
-        </div>
-      )}
+      {/* Tabs */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex gap-2">
+        <button
+          onClick={() => setActiveTab('all')}
+          className={clsx(
+            'flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors',
+            activeTab === 'all'
+              ? 'bg-primary-600 text-white'
+              : 'text-slate-600 hover:bg-slate-50',
+          )}
+        >
+          All transactions
+        </button>
+        <button
+          onClick={() => setActiveTab('uncategorized')}
+          className={clsx(
+            'flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors',
+            activeTab === 'uncategorized'
+              ? 'bg-primary-600 text-white'
+              : 'text-slate-600 hover:bg-slate-50',
+          )}
+        >
+          Uncategorized ({uncategorizedTransactions.length})
+        </button>
+      </div>
 
       {isLoading && <div className="text-slate-400 text-sm">Loading…</div>}
 

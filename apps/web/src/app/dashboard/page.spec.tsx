@@ -16,6 +16,9 @@ vi.mock('recharts', () => ({
   ReferenceLine: () => (
     <div data-testid="today-line" />
   ),
+  ReferenceArea: () => (
+    <div data-testid="forecast-area" />
+  ),
 }));
 
 vi.mock('@/lib/api', async () => {
@@ -193,6 +196,26 @@ describe('DashboardPage', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('today-line')).toBeInTheDocument();
+    });
+  });
+
+  it('renders forecast shading after today line', async () => {
+    mockGetDashboardFromAccounts.mockResolvedValue({
+      totalCash: 0,
+      baseCurrency: 'CHF',
+      endOfMonthProjection: 0,
+      mtd: { income: 0, expenses: 0 },
+      accounts: [],
+      forecast: { points: [], markers: [], lowestPointDate: '', lowestBalance: 0 },
+      categoryBreakdown: [],
+    });
+
+    mockGetTransactions.mockResolvedValue([] as any);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('forecast-area')).toBeInTheDocument();
     });
   });
 

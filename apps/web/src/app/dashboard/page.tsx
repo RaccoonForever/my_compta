@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getDashboardFromAccounts, getTransactions } from '@/lib/api';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 
@@ -143,6 +143,10 @@ export default function DashboardPage() {
     index === arr.length - 1 || item.date !== arr[index + 1].date
   );
 
+  const lastDateLabel = uniqueData.length > 0
+    ? uniqueData[uniqueData.length - 1]!.dateLabel
+    : todayLabel;
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
 
@@ -179,6 +183,13 @@ export default function DashboardPage() {
             <ReferenceLine
               x={todayLabel}
               stroke="#16a34a"
+            />
+            <ReferenceArea
+              x1={todayLabel}
+              x2={lastDateLabel}
+              fill="#16a34a"
+              fillOpacity={0.08}
+              stroke="none"
             />
             {/* Total balance line (bold) */}
             <Line 
