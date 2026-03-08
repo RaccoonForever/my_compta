@@ -30,7 +30,9 @@ export function AddTransactionModal({ open, onClose }: Props) {
   const [label, setLabel] = useState('');
   const [accountId, setAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [subcategory, setSubcategory] = useState('');
   const [note, setNote] = useState('');
+  const [isForecasted, setIsForecasted] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{ label: string; amount?: number; categoryId?: string; type?: string }>>([]);
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => getSettings() });
@@ -40,6 +42,9 @@ export function AddTransactionModal({ open, onClose }: Props) {
   const filteredCategories = categories.filter(c =>
     type === 'income' ? c.kind === 'income' : c.kind === 'expense',
   );
+
+  const selectedCategory = categories.find(c => c.id === categoryId);
+  const catById = Object.fromEntries(categories.map(c => [c.id, c]));
 
   // Set defaults when modal opens
   useEffect(() => {
@@ -79,7 +84,9 @@ export function AddTransactionModal({ open, onClose }: Props) {
         accountId,
         label,
         categoryId: categoryId || undefined,
+        subcategory: subcategory || undefined,
         note: note || undefined,
+        isForecasted,
       };
       return createTransaction(body);
     },
@@ -93,7 +100,7 @@ export function AddTransactionModal({ open, onClose }: Props) {
   });
 
   const resetForm = () => {
-    setAmount(''); setLabel(''); setCategoryId(''); setNote('');
+    setAmount(''); setLabel(''); setCategoryId(''); setSubcategory(''); setNote(''); setIsForecasted(false);
   };
 
   if (!open) return null;
@@ -193,12 +200,25 @@ export function AddTransactionModal({ open, onClose }: Props) {
         {/* Category */}
         <select
             value={categoryId}
-            onChange={e => setCategoryId(e.target.value)}
+            onChange={e => { setCategoryId(e.target.value); setSubcategory(''); }}
             className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
           >
             <option value="">Category (optional)</option>
             {filteredCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+
+        {/* Subcategory */}
+        <select
+          value={subcategory}
+          onChange={e => setSubcategory(e.target.value)}
+          disabled={!categoryId}
+          className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+        >
+          <option value="">Subcategory (optional)</option>
+          {categoryId && catById[categoryId]?.subcategories?.map(sub => (
+            <option key={sub} value={sub}>{sub}</option>
+          ))}
+        </select>
 
         {/* Note */}
         <input
@@ -208,6 +228,17 @@ export function AddTransactionModal({ open, onClose }: Props) {
           onChange={e => setNote(e.target.value)}
           className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
         />
+
+        {/* Forecasted */}
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={isForecasted}
+            onChange={e => setIsForecasted(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Forecasted transaction
+        </label>
 
         {mutation.isError && (
           <p className="text-red-500 text-sm">{(mutation.error as Error).message}</p>

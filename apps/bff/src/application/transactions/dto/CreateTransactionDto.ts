@@ -6,11 +6,12 @@ import {
   IsNumber,
   IsNotEmpty,
   MaxLength,
+  IsBoolean,
 } from 'class-validator';
 import { TransactionType } from '@my-compta/domain';
 import { Currency } from '@my-compta/domain';
 
-const TX_TYPES: TransactionType[] = ['income', 'expense', 'transfer'];
+const TX_TYPES: TransactionType[] = ['income', 'expense'];
 const CURRENCIES: Currency[] = ['CHF', 'EUR', 'USD', 'GBP'];
 
 export class CreateTransactionDto {
@@ -58,4 +59,9 @@ export class CreateTransactionDto {
   @IsString()
   @MaxLength(512)
   note?: string;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  isForecasted?: boolean;
 }

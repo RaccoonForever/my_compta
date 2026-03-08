@@ -228,7 +228,7 @@ export interface AccountDetailResponse {
   mtd: { income: number; expenses: number };
   forecast: { points: Array<{ date: string; balance: number }>; markers: Array<{ date: string; label: string; amount: { value: number; currency: string }; source: string }>; lowestPointDate: string; lowestBalance: number };
   categoryBreakdown: Array<{ categoryId: string | null; total: number }>;
-  recentTransactions: Array<{ id: string; type: string; amount: number; currency: string; date: string; label: string; categoryId?: string }>;
+  recentTransactions: Array<{ id: string; type: string; amount: number; currency: string; date: string; label: string; categoryId?: string; isForecasted: boolean }>;
 }
 export interface CreateAccountBody {
   name: string; type: string; currency: string; balance?: number; createdAt?: string;
@@ -236,15 +236,15 @@ export interface CreateAccountBody {
 export interface TransactionResponse {
   id: string; accountId: string; categoryId?: string; subcategory?: string; type: string;
   amount: number; currency: string; date: string; label: string;
-  note?: string;
+  note?: string; isForecasted: boolean;
   createdAt: string; updatedAt: string;
 }
 export interface CreateTransactionBody {
-  amount: number; currency: string; type: string; date: string;
-  accountId: string; label: string; categoryId?: string; subcategory?: string; note?: string;
+  amount: number; currency: string; type: 'income' | 'expense'; date: string;
+  accountId: string; label: string; categoryId?: string; subcategory?: string; note?: string; isForecasted?: boolean;
 }
 export interface TransactionFilters {
-  accountId?: string; categoryId?: string; type?: string;
+  accountId?: string; categoryId?: string; type?: 'income' | 'expense';
   from?: string; to?: string; limit?: string; afterId?: string;
 }
 export interface AutocompleteResult {
@@ -296,7 +296,7 @@ export interface ImportRowResult {
     date: string;
     amount: number;
     label: string;
-    type: 'income' | 'expense' | 'transfer';
+    type: 'income' | 'expense';
     category?: string;
     subcategory?: string;
     reference?: string;

@@ -23,10 +23,6 @@ export class TransactionsService {
   ) {}
 
   async create(userId: string, dto: CreateTransactionDto): Promise<Transaction> {
-    if (dto.type === 'transfer') {
-      throw new ValidationError('Transfer transactions are not supported');
-    }
-
     const account = await this.accountRepo.findById(userId, dto.accountId);
     if (!account) throw new NotFoundError('Account', dto.accountId);
 
@@ -44,6 +40,7 @@ export class TransactionsService {
       categoryId: dto.categoryId,
       subcategory: dto.subcategory,
       type: dto.type,
+      isForecasted: dto.isForecasted ?? false,
       amount,
       date: txDate,
       label: dto.label,
@@ -71,9 +68,6 @@ export class TransactionsService {
   ): Promise<Transaction> {
     const existing = await this.txRepo.findById(userId, id);
     if (!existing) throw new NotFoundError('Transaction', id);
-    if (existing.isTransfer()) {
-      throw new ValidationError('Transfer transactions are not supported');
-    }
 
     const newAmount = dto.amount !== undefined
       ? Money.of(dto.amount, dto.currency ?? existing.amount.currency)
@@ -88,11 +82,11 @@ export class TransactionsService {
       categoryId: dto.categoryId ?? existing.categoryId,
       subcategory: dto.subcategory !== undefined ? dto.subcategory : existing.subcategory,
       type: existing.type,
+      isForecasted: dto.isForecasted ?? existing.isForecasted,
       amount: newAmount,
       date: newDate,
       label: dto.label ?? existing.label,
       note: dto.note ?? existing.note,
-      transferLinkId: existing.transferLinkId,
       recurringInstanceId: existing.recurringInstanceId,
     });
 
@@ -103,9 +97,6 @@ export class TransactionsService {
   async delete(userId: string, id: string): Promise<void> {
     const tx = await this.txRepo.findById(userId, id);
     if (!tx) throw new NotFoundError('Transaction', id);
-    if (tx.isTransfer()) {
-      throw new ValidationError('Transfer transactions are not supported');
-    }
     await this.txRepo.delete(userId, id);
   }
 

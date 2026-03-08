@@ -32,11 +32,11 @@ export class FirestoreTransactionRepository implements TransactionRepository {
       categoryId: data['categoryId'] as string | undefined,
       subcategory: data['subcategory'] as string | undefined,
       type: data['type'] as TransactionType,
+      isForecasted: (data['isForecasted'] as boolean | undefined) ?? false,
       amount: data['amount'] as TransactionPrimitives['amount'],
       date: (data['date'] as admin.firestore.Timestamp).toDate(),
       label: data['label'] as string,
       note: data['note'] as string | undefined,
-      transferLinkId: data['transferLinkId'] as string | undefined,
       recurringInstanceId: data['recurringInstanceId'] as string | undefined,
       createdAt: (data['createdAt'] as admin.firestore.Timestamp).toDate(),
       updatedAt: (data['updatedAt'] as admin.firestore.Timestamp).toDate(),
@@ -78,19 +78,6 @@ export class FirestoreTransactionRepository implements TransactionRepository {
       if (cursor.exists) q = q.startAfter(cursor);
     }
     const snap = await q.get();
-    return snap.docs.map(d =>
-      Transaction.fromPrimitives(this.toPrimitives(d.id, d.data())),
-    );
-  }
-
-  async findByTransferLinkId(
-    userId: string,
-    transferLinkId: string,
-  ): Promise<Transaction[]> {
-    const snap = await this.col()
-      .where('userId', '==', userId)
-      .where('transferLinkId', '==', transferLinkId)
-      .get();
     return snap.docs.map(d =>
       Transaction.fromPrimitives(this.toPrimitives(d.id, d.data())),
     );

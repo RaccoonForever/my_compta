@@ -26,6 +26,22 @@ import { ImportSummary, ConfirmImportRequest, ConfirmImportResponse } from './dt
 
 interface AuthRequest { user: { uid: string } }
 
+const parseStartOfDay = (value?: string): Date | undefined => {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
+const parseEndOfDay = (value?: string): Date | undefined => {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  parsed.setHours(23, 59, 59, 999);
+  return parsed;
+};
+
 @ApiTags('transactions')
 @ApiBearerAuth()
 @UseGuards(AuthGuard)
@@ -50,7 +66,7 @@ export class TransactionsController {
   @ApiOperation({ summary: 'List transactions with filters' })
   @ApiQuery({ name: 'accountId', required: false })
   @ApiQuery({ name: 'categoryId', required: false })
-  @ApiQuery({ name: 'type', required: false, enum: ['income', 'expense', 'transfer'] })
+  @ApiQuery({ name: 'type', required: false, enum: ['income', 'expense'] })
   @ApiQuery({ name: 'from', required: false, description: 'ISO date' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO date' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -68,9 +84,9 @@ export class TransactionsController {
     const txs = await this.transactionsService.list(req.user.uid, {
       accountId,
       categoryId,
-      type: type as 'income' | 'expense' | 'transfer' | undefined,
-      from: from ? new Date(from) : undefined,
-      to: to ? new Date(to) : undefined,
+      type: type as 'income' | 'expense' | undefined,
+      from: parseStartOfDay(from),
+      to: parseEndOfDay(to),
       limit: limit ? Number(limit) : undefined,
       afterId,
     });

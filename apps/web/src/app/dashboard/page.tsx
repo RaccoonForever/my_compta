@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getDashboardFromAccounts, getTransactions } from '@/lib/api';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 
@@ -40,6 +40,7 @@ export default function DashboardPage() {
   // Compute historical balance from transactions (last 7 days)
   const today = new Date();
   today.setHours(23, 59, 59, 999); // Set to end of day to include all today's transactions
+  const todayLabel = format(today, 'dd MMM');
   const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
   const ninetyDaysAgo = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000); // used for opening balance fallback
   
@@ -175,6 +176,10 @@ export default function DashboardPage() {
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip formatter={(v: number) => new Intl.NumberFormat(undefined).format(v)} />
             <Legend />
+            <ReferenceLine
+              x={todayLabel}
+              stroke="#16a34a"
+            />
             {/* Total balance line (bold) */}
             <Line 
               type="monotone" 

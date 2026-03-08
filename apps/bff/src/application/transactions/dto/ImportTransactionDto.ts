@@ -21,9 +21,9 @@ export interface ImportTransactionDto {
   label: string;
 
   /**
-   * Transaction type: 'income' | 'expense' | 'transfer'
+    * Transaction type: 'income' | 'expense'
    */
-  type: 'income' | 'expense' | 'transfer';
+    type: 'income' | 'expense';
 
   /**
    * Category name from bank export

@@ -110,17 +110,6 @@ describe('TransactionImportService', () => {
       expect(transaction.type).toBe('expense');
     });
 
-    it('should identify transfer transactions', async () => {
-      const csv = `Date de comptabilisation;Libelle simplifie;Libelle operation;Reference;Informations complementaires;Type operation;Categorie;Sous categorie;Debit;Credit;Date operation;Date de valeur;Pointage operation
-20/02/2026;VIREMENT;VIR VIREMENT INTERNE;REF789;;Virement;Transfert;;-500;;20/02/2026;20/02/2026;0`;
-
-      const summary = await service.parseAndValidateCsv(csv);
-
-      expect(summary.successCount).toBe(1);
-      const transaction = summary.results[0].transaction!;
-      expect(transaction.type).toBe('transfer');
-    });
-
     it('should parse date correctly from DD/MM/YYYY format', async () => {
       const csv = `Date de comptabilisation;Libelle simplifie;Libelle operation;Reference;Informations complementaires;Type operation;Categorie;Sous categorie;Debit;Credit;Date operation;Date de valeur;Pointage operation
 15/01/2026;TEST;CB TEST;REF;NOTE;Carte bancaire;Test;;-50;;15/01/2026;15/01/2026;0`;
@@ -652,48 +641,6 @@ describe('TransactionImportService', () => {
       expect(result.errors![0]).toContain('Account creation date is too recent');
     });
 
-    it('should import transfer rows by normalizing them to signed expense/income types', async () => {
-      const originalCreate = mockTransactionsService.create.bind(mockTransactionsService);
-      mockTransactionsService.create = async (userId: string, dto: any) => {
-        if (dto.type === 'transfer') {
-          throw new Error('Transfer transactions are not supported');
-        }
-        return originalCreate(userId, dto);
-      };
-
-      const summary = {
-        totalRows: 1,
-        successCount: 1,
-        errorCount: 0,
-        warningCount: 0,
-        results: [
-          {
-            rowNumber: 1,
-            success: true,
-            transaction: {
-              date: '2026-02-13',
-              amount: -1187.31,
-              label: 'SARL PMPC',
-              type: 'transfer' as const,
-              operationType: 'Virement',
-            },
-          },
-        ],
-      };
-
-      const request: ConfirmImportRequest = {
-        summary,
-        accountId: 'acc-1',
-        autoMapCategories: false,
-        skipDuplicateCheck: true,
-      };
-
-      const result = await serviceWithMocks.confirmImport('user-1', request);
-
-      expect(result.createdCount).toBe(1);
-      expect(result.failedCount).toBe(0);
-      expect(result.errors).toBeUndefined();
-    });
 
     it('should throw error when account is not found', async () => {
       const summary = {

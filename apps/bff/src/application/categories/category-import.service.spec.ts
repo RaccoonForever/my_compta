@@ -181,14 +181,12 @@ describe('CategoryImportService', () => {
     it('should handle income and expense categories separately', async () => {
       const csv = `Date de comptabilisation;Libelle simplifie;Libelle operation;Reference;Informations complementaires;Type operation;Categorie;Sous categorie;Debit;Credit;Date operation;Date de valeur;Pointage operation
 01/03/2026;TX1;CB TX1;REF;;Carte bancaire;Transfer;;-100;;01/03/2026;01/03/2026;0
-02/03/2026;TX2;CB TX2;REF;;Virement recu;Transfer;;;+100;;02/03/2026;02/03/2026;0`;
+02/03/2026;TX2;CB TX2;REF;;Virement recu;Transfer;;+100;;02/03/2026;02/03/2026;0`;
 
       const result = await service.extractCategoriesFromCSV(csv, []);
 
       // "Transfer" appears as both income and expense, so should be treated as 2 entries
-      // But "virement" is classified as transfer type, so it won't have a category or will skip it
-      // Actually in our logic, "Virement recu" becomes income
-      expect(result.rows.length).toBeGreaterThanOrEqual(1);
+      expect(result.rows.length).toBe(2);
     });
 
     it('should correctly count existing pairs when importing identical CSV twice', async () => {

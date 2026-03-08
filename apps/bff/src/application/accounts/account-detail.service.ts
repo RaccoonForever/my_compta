@@ -26,7 +26,7 @@ export interface AccountDetailData {
   mtd: { income: number; expenses: number };
   forecast: ReturnType<ForecastService['compute']>;
   categoryBreakdown: Array<{ categoryId: string | null; total: number }>;
-  recentTransactions: Array<{ id: string; type: string; amount: number; currency: string; date: string; label: string; categoryId?: string }>;
+  recentTransactions: Array<{ id: string; type: string; amount: number; currency: string; date: string; label: string; categoryId?: string; isForecasted: boolean }>;
 }
 
 @Injectable()
@@ -149,6 +149,7 @@ export class AccountDetailService {
         currency: tx.amount.currency,
         date: tx.date.toISOString(),
         label: tx.label,
+        isForecasted: tx.isForecasted,
         ...(tx.categoryId !== undefined ? { categoryId: tx.categoryId } : {}),
       })),
     };

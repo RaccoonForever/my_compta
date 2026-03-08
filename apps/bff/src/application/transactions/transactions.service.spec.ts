@@ -6,12 +6,12 @@ import { NotFoundError, ValidationError, Money, Transaction } from '@my-compta/d
 
 function makeTx(overrides: Partial<{
   id: string;
-  type: 'income' | 'expense' | 'transfer';
+  type: 'income' | 'expense';
   amount: number;
   currency: string;
   date: Date;
   accountId: string;
-  transferLinkId?: string;
+  isForecasted?: boolean;
 }> = {}): Transaction {
   const {
     id = 'tx-1',
@@ -20,7 +20,7 @@ function makeTx(overrides: Partial<{
     currency = 'CHF',
     date = new Date('2025-01-15'),
     accountId = 'acc-1',
-    transferLinkId,
+    isForecasted,
   } = overrides;
 
   return Transaction.create({
@@ -28,10 +28,10 @@ function makeTx(overrides: Partial<{
     userId: 'user-1',
     accountId,
     type,
+    isForecasted,
     amount: Money.of(amount, currency),
     date,
     label: 'Test transaction',
-    transferLinkId,
   });
 }
 
@@ -96,17 +96,6 @@ describe('TransactionsService', () => {
   // ── create ────────────────────────────────────────────────────────────────
 
   describe('create', () => {
-    it('throws ValidationError when type is transfer', async () => {
-      await expect(service.create('user-1', {
-        type: 'transfer',
-        amount: 100,
-        currency: 'CHF',
-        date: TODAY.toISOString(),
-        accountId: 'acc-1',
-        label: 'Test',
-      })).rejects.toThrow(ValidationError);
-    });
-
     it('throws NotFoundError when account does not exist', async () => {
       accountRepo.findById.mockResolvedValue(null);
 
@@ -195,12 +184,6 @@ describe('TransactionsService', () => {
       await expect(service.delete('user-1', 'tx-missing')).rejects.toThrow(NotFoundError);
     });
 
-    it('throws ValidationError when deleting a transfer transaction', async () => {
-      txRepo.findById.mockResolvedValue(makeTx({ transferLinkId: 'link-1', type: 'transfer' }));
-
-      await expect(service.delete('user-1', 'tx-1')).rejects.toThrow(ValidationError);
-    });
-
     it('deletes the transaction via repo for a past transaction', async () => {
       txRepo.findById.mockResolvedValue(makeTx({ type: 'expense', amount: 100, date: PAST_DATE }));
 
@@ -227,12 +210,6 @@ describe('TransactionsService', () => {
       txRepo.findById.mockResolvedValue(null);
 
       await expect(service.update('user-1', 'tx-missing', { label: 'New' })).rejects.toThrow(NotFoundError);
-    });
-
-    it('throws ValidationError when editing a transfer', async () => {
-      txRepo.findById.mockResolvedValue(makeTx({ transferLinkId: 'link-1', type: 'transfer' }));
-
-      await expect(service.update('user-1', 'tx-1', { label: 'Edit' })).rejects.toThrow(ValidationError);
     });
 
     it('saves updated transaction via repo when amount changes', async () => {

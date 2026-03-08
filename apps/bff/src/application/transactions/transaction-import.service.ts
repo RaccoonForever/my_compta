@@ -177,7 +177,7 @@ export class TransactionImportService {
     const amount = debit !== 0 ? debit : credit;
 
     // Determine transaction type based on amount and operation type
-    const type = this.determineTransactionType(amount, operationType || '');
+    const type = this.determineTransactionType(amount);
 
     // Parse and validate date
     const date = this.parseDate(dateStr, format.dateFormat);
@@ -251,28 +251,11 @@ export class TransactionImportService {
   /**
    * Determine transaction type based on amount and operation type
    * Logic:
-   * - "Virement recu" (received transfer/reimbursement) = income
-   * - "Virement emis" (sent/outgoing transfer) = transfer
-   * - "Virement" (generic transfer) = transfer
-   * - Otherwise: positive amount = income, negative = expense
+   * - Positive amount = income, negative = expense
    */
   private determineTransactionType(
     amount: number,
-    operationType: string,
-  ): 'income' | 'expense' | 'transfer' {
-    const op = operationType.toLowerCase();
-
-    // Received transfers/reimbursements are income
-    if (op.includes('virement recu')) {
-      return 'income';
-    }
-
-    // Outgoing transfers or generic virements are transfers
-    if (op.includes('virement')) {
-      return 'transfer';
-    }
-
-    // Income/expense by amount sign (default)
+  ): 'income' | 'expense' {
     return amount > 0 ? 'income' : 'expense';
   }
 
@@ -396,7 +379,7 @@ export class TransactionImportService {
           date: tx.date.toISOString().split('T')[0],
           amount: tx.type === 'expense' ? -tx.amount.value : tx.amount.value, // Apply sign based on type
           label: tx.label,
-          type: tx.type as 'income' | 'expense' | 'transfer',
+          type: tx.type as 'income' | 'expense',
         }),
       );
 
@@ -483,25 +466,18 @@ export class TransactionImportService {
     accountId: string;
     amount: number;
     currency: 'CHF' | 'EUR' | 'USD' | 'GBP';
-    type: 'income' | 'expense' | 'transfer';
+    type: 'income' | 'expense';
     date: string;
     label: string;
     categoryId?: string;
     subcategory?: string;
     note?: string;
   } {
-    const normalizedType: 'income' | 'expense' =
-      imported.type === 'transfer'
-        ? imported.amount >= 0
-          ? 'income'
-          : 'expense'
-        : imported.type;
-
     return {
       accountId,
       amount: Math.abs(imported.amount),
       currency: currency as 'CHF' | 'EUR' | 'USD' | 'GBP',
-      type: normalizedType,
+      type: imported.type,
       date: imported.date,
       label: imported.label,
       categoryId,

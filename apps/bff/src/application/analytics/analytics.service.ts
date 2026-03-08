@@ -29,7 +29,6 @@ export class AnalyticsService {
     const to = new Date(Date.UTC(year, 11, 31, 23, 59, 59));
 
     const txs = await this.txRepo.findByUser(userId, { from, to });
-    const nonTransfers = txs.filter(t => t.type !== 'transfer');
 
     let totalIncome = 0;
     let totalExpenses = 0;
@@ -38,7 +37,7 @@ export class AnalyticsService {
       (_, i) => ({ month: i + 1, income: 0, expenses: 0 }),
     );
 
-    for (const tx of nonTransfers) {
+    for (const tx of txs) {
       const month = tx.date.getUTCMonth(); // 0-indexed
       if (tx.type === 'income') {
         totalIncome += tx.amount.value;
@@ -101,7 +100,7 @@ export class AnalyticsService {
     const txs = await this.txRepo.findByUser(userId, { from, to });
     const byMonth = new Map<string, { income: number; expenses: number }>();
 
-    for (const tx of txs.filter(t => t.type !== 'transfer')) {
+    for (const tx of txs) {
       const key = `${tx.date.getUTCFullYear()}-${String(tx.date.getUTCMonth() + 1).padStart(2, '0')}`;
       if (!byMonth.has(key)) byMonth.set(key, { income: 0, expenses: 0 });
       if (tx.type === 'income') byMonth.get(key)!.income += tx.amount.value;

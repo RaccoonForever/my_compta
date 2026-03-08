@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, MaxLength, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsNumber, MaxLength, IsIn, IsBoolean } from 'class-validator';
 import { Currency, TransactionType } from '@my-compta/domain';
 
 const CURRENCIES: Currency[] = ['CHF', 'EUR', 'USD', 'GBP'];
@@ -47,4 +47,9 @@ export class UpdateTransactionDto {
   @IsString()
   @MaxLength(512)
   note?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isForecasted?: boolean;
 }

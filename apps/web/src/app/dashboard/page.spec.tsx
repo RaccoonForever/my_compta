@@ -13,6 +13,9 @@ vi.mock('recharts', () => ({
   Tooltip: () => null,
   Legend: () => null,
   Line: () => null,
+  ReferenceLine: () => (
+    <div data-testid="today-line" />
+  ),
 }));
 
 vi.mock('@/lib/api', async () => {
@@ -170,6 +173,26 @@ describe('DashboardPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Failed to load dashboard.')).toBeInTheDocument();
+    });
+  });
+
+  it('renders a today reference line in the chart', async () => {
+    mockGetDashboardFromAccounts.mockResolvedValue({
+      totalCash: 0,
+      baseCurrency: 'CHF',
+      endOfMonthProjection: 0,
+      mtd: { income: 0, expenses: 0 },
+      accounts: [],
+      forecast: { points: [], markers: [], lowestPointDate: '', lowestBalance: 0 },
+      categoryBreakdown: [],
+    });
+
+    mockGetTransactions.mockResolvedValue([] as any);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('today-line')).toBeInTheDocument();
     });
   });
 

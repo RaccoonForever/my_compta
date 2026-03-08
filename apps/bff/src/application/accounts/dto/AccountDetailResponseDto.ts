@@ -24,6 +24,7 @@ export class AccountDetailResponseDto {
     date: string;
     label: string;
     categoryId?: string;
+    isForecasted: boolean;
   }>;
 
   static from(data: any): AccountDetailResponseDto {
