@@ -134,6 +134,16 @@ export class TransactionsController {
     await this.transactionsService.delete(req.user.uid, id);
   }
 
+  @Post('forecast/refresh')
+  @ApiOperation({
+    summary: 'Remove obsolete forecast transactions up to latest real transaction date',
+  })
+  async refreshForecast(
+    @Request() req: AuthRequest,
+  ): Promise<{ removedCount: number }> {
+    return this.transactionsService.refreshForecast(req.user.uid);
+  }
+
   @Post('import/validate')
   @ApiOperation({
     summary: 'Validate and preview CSV import without committing to database',

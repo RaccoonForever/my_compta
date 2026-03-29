@@ -18,6 +18,37 @@ interface Props {
 }
 
 type TxType = 'income' | 'expense';
+type RecurringFrequency = 'daily' | 'monthly';
+
+const formatDateInput = (date: Date): string => date.toISOString().split('T')[0] ?? '';
+
+const addMonthsWithClamp = (source: Date, months: number): Date => {
+  const start = new Date(source);
+  const day = start.getUTCDate();
+  const target = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, 1));
+  const maxDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, maxDay));
+  return target;
+};
+
+const computeNextOccurrenceDate = (
+  startDateIso: string,
+  frequency: RecurringFrequency,
+  interval: number,
+): string => {
+  const startDate = new Date(startDateIso);
+  if (Number.isNaN(startDate.getTime())) {
+    return startDateIso;
+  }
+
+  if (frequency === 'daily') {
+    const next = new Date(startDate);
+    next.setUTCDate(next.getUTCDate() + interval);
+    return formatDateInput(next);
+  }
+
+  return formatDateInput(addMonthsWithClamp(startDate, interval));
+};
 
 export function AddTransactionModal({ open, onClose }: Props) {
   const qc = useQueryClient();
@@ -33,6 +64,10 @@ export function AddTransactionModal({ open, onClose }: Props) {
   const [subcategory, setSubcategory] = useState('');
   const [note, setNote] = useState('');
   const [isForecasted, setIsForecasted] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('monthly');
+  const [recurringInterval, setRecurringInterval] = useState('1');
+  const [recurringEndDate, setRecurringEndDate] = useState('');
   const [suggestions, setSuggestions] = useState<Array<{ label: string; amount?: number; categoryId?: string; type?: string }>>([]);
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => getSettings() });
@@ -43,8 +78,44 @@ export function AddTransactionModal({ open, onClose }: Props) {
     type === 'income' ? c.kind === 'income' : c.kind === 'expense',
   );
 
-  const selectedCategory = categories.find(c => c.id === categoryId);
   const catById = Object.fromEntries(categories.map(c => [c.id, c]));
+  const recurringIntervalValue = Math.max(1, Number.parseInt(recurringInterval || '1', 10) || 1);
+  const maxRecurringEndDate = (() => {
+    const baseDate = new Date(date);
+    if (Number.isNaN(baseDate.getTime())) return '';
+    const maxDate = new Date(baseDate);
+    maxDate.setUTCFullYear(maxDate.getUTCFullYear() + 2);
+    return formatDateInput(maxDate);
+  })();
+  const minRecurringEndDate = computeNextOccurrenceDate(date, recurringFrequency, recurringIntervalValue);
+  const recurringRangeInvalid =
+    isRecurring &&
+    recurringEndDate.length > 0 &&
+    ((minRecurringEndDate && recurringEndDate < minRecurringEndDate) ||
+      (maxRecurringEndDate && recurringEndDate > maxRecurringEndDate));
+
+  const resetForm = () => {
+    setType('expense');
+    setAmount('');
+    setCurrency('');
+    setDate(new Date().toISOString().split('T')[0]!);
+    setLabel('');
+    setAccountId('');
+    setCategoryId('');
+    setSubcategory('');
+    setNote('');
+    setIsForecasted(false);
+    setIsRecurring(false);
+    setRecurringFrequency('monthly');
+    setRecurringInterval('1');
+    setRecurringEndDate('');
+    setSuggestions([]);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   // Set defaults when modal opens
   useEffect(() => {
@@ -55,6 +126,48 @@ export function AddTransactionModal({ open, onClose }: Props) {
       setTimeout(() => amountRef.current?.focus(), 50);
     }
   }, [open, accounts, settings]);
+
+  useEffect(() => {
+    if (!open) {
+      resetForm();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!isRecurring) {
+      return;
+    }
+
+    if (!recurringEndDate) {
+      setRecurringEndDate(maxRecurringEndDate);
+      return;
+    }
+
+    if (minRecurringEndDate && recurringEndDate < minRecurringEndDate) {
+      setRecurringEndDate(minRecurringEndDate);
+      return;
+    }
+
+    if (maxRecurringEndDate && recurringEndDate > maxRecurringEndDate) {
+      setRecurringEndDate(maxRecurringEndDate);
+    }
+  }, [
+    isRecurring,
+    recurringEndDate,
+    minRecurringEndDate,
+    maxRecurringEndDate,
+  ]);
 
   // Autocomplete suggestions
   useEffect(() => {
@@ -87,6 +200,17 @@ export function AddTransactionModal({ open, onClose }: Props) {
         subcategory: subcategory || undefined,
         note: note || undefined,
         isForecasted,
+        recurring: isRecurring
+          ? {
+              frequency: recurringFrequency,
+              interval: recurringIntervalValue,
+              byMonthDay: recurringFrequency === 'monthly'
+                ? new Date(date).getUTCDate()
+                : undefined,
+              endDate: recurringEndDate,
+              tz: 'Europe/Zurich',
+            }
+          : undefined,
       };
       return createTransaction(body);
     },
@@ -94,24 +218,22 @@ export function AddTransactionModal({ open, onClose }: Props) {
       void qc.invalidateQueries({ queryKey: ['transactions'] });
       void qc.invalidateQueries({ queryKey: ['dashboard'] });
       void qc.invalidateQueries({ queryKey: ['accounts'] });
-      onClose();
       resetForm();
+      onClose();
     },
   });
-
-  const resetForm = () => {
-    setAmount(''); setLabel(''); setCategoryId(''); setSubcategory(''); setNote(''); setIsForecasted(false);
-  };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" role="dialog" aria-modal>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-screen overflow-y-auto p-6 flex flex-col gap-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain p-4 bg-black/40 backdrop-blur-sm" role="dialog" aria-modal>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] overflow-hidden overscroll-contain p-6 flex flex-col">
         <h2 className="text-lg font-semibold text-slate-800">Add Transaction</h2>
 
+        <div data-testid="add-transaction-scroll-area" className="mt-4 flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 flex flex-col gap-4">
+
         {/* Type selector */}
-        <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm font-medium">
+        <div data-testid="tx-type-selector" className="shrink-0 flex rounded-lg border border-slate-200 overflow-hidden text-sm font-medium">
           {(['income', 'expense'] as TxType[]).map(t => (
             <button
               key={t}
@@ -240,21 +362,87 @@ export function AddTransactionModal({ open, onClose }: Props) {
           Forecasted transaction
         </label>
 
+        {/* Recurring */}
+        <div className="border border-slate-200 rounded-lg p-3 space-y-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700 font-medium">
+            <input
+              type="checkbox"
+              checked={isRecurring}
+              onChange={e => setIsRecurring(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Recurring transaction
+          </label>
+
+          {isRecurring && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={recurringFrequency}
+                  onChange={e => setRecurringFrequency(e.target.value as RecurringFrequency)}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="daily">Daily</option>
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={recurringInterval}
+                  onChange={e => setRecurringInterval(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+                  placeholder="Every X"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-slate-600">Recurring end date (max 2 years)</label>
+                <input
+                  type="date"
+                  value={recurringEndDate}
+                  min={minRecurringEndDate}
+                  max={maxRecurringEndDate}
+                  onChange={e => setRecurringEndDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+                />
+                <p className="text-xs text-slate-500">
+                  Next occurrence: {minRecurringEndDate}. End date cannot exceed {maxRecurringEndDate}.
+                </p>
+              </div>
+
+              {recurringRangeInvalid && (
+                <p className="text-xs text-red-500">
+                  End date must be between the next occurrence and the 2-year limit.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
         {mutation.isError && (
           <p className="text-red-500 text-sm">{(mutation.error as Error).message}</p>
         )}
+        </div>
 
         {/* Actions */}
-        <div className="flex gap-3 pt-1">
+        <div className="flex gap-3 pt-3 mt-4 border-t border-slate-100">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
           >
             Cancel
           </button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={!amount || !date || !accountId || mutation.isPending || accounts.length === 0}
+            disabled={
+              !amount ||
+              !date ||
+              !accountId ||
+              mutation.isPending ||
+              accounts.length === 0 ||
+              (isRecurring && (!recurringEndDate || recurringRangeInvalid))
+            }
             className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             {mutation.isPending ? 'Saving…' : 'Save'}

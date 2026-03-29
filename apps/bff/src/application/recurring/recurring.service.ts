@@ -4,6 +4,7 @@ import {
   RecurringTemplate,
   Transaction,
   NotFoundError,
+  ValidationError,
 } from '@my-compta/domain';
 import { RecurringSchedulerService } from '@my-compta/domain';
 import {
@@ -38,6 +39,30 @@ export class RecurringService {
   ) {}
 
   async create(userId: string, dto: CreateRecurringTemplateDto): Promise<RecurringTemplate> {
+    const nextRunDate = new Date(dto.nextRunDate);
+    if (Number.isNaN(nextRunDate.getTime())) {
+      throw new ValidationError('Invalid nextRunDate');
+    }
+
+    let endDate: Date | undefined;
+    if (dto.endDate) {
+      endDate = new Date(dto.endDate);
+      if (Number.isNaN(endDate.getTime())) {
+        throw new ValidationError('Invalid endDate');
+      }
+
+      if (endDate < nextRunDate) {
+        throw new ValidationError('endDate must be on or after nextRunDate');
+      }
+
+      const maxAllowedEndDate = new Date(nextRunDate);
+      maxAllowedEndDate.setUTCFullYear(maxAllowedEndDate.getUTCFullYear() + 2);
+
+      if (endDate > maxAllowedEndDate) {
+        throw new ValidationError('endDate cannot be more than 2 years after nextRunDate');
+      }
+    }
+
     const template = RecurringTemplate.create({
       id: this.idGenerator.generate(),
       userId,
@@ -46,8 +71,18 @@ export class RecurringService {
       type: dto.type,
       categoryId: dto.categoryId,
       accountId: dto.accountId,
-      schedule: dto.schedule,
-      nextRunDate: new Date(dto.nextRunDate),
+      schedule: {
+        frequency: dto.schedule.frequency,
+        interval: dto.schedule.interval,
+        ...(dto.schedule.byDay !== undefined
+          ? { byDay: dto.schedule.byDay }
+          : {}),
+        ...(dto.schedule.byMonthDay !== undefined
+          ? { byMonthDay: dto.schedule.byMonthDay }
+          : {}),
+      },
+      nextRunDate,
+      endDate,
       tz: dto.tz,
     });
     await this.recurringRepo.save(template);
@@ -157,9 +192,17 @@ export class RecurringService {
         template.schedule,
         template.tz,
       );
+
+      const reachedEndDate =
+        template.endDate !== undefined && nextDate > template.endDate;
+
       batch.update(
         this.db.collection('recurringTemplates').doc(template.id),
-        { nextRunDate: nextDate, updatedAt: now },
+        {
+          nextRunDate: nextDate,
+          ...(reachedEndDate ? { status: 'paused' } : {}),
+          updatedAt: now,
+        },
       );
 
       await batch.commit();

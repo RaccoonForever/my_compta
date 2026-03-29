@@ -1,11 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Money, Transaction, NotFoundError, ValidationError } from '@my-compta/domain';
+import {
+  Money,
+  Transaction,
+  NotFoundError,
+  ValidationError,
+  RecurringTemplate,
+  RecurringSchedulerService,
+} from '@my-compta/domain';
 import {
   TransactionRepository,
   TRANSACTION_REPOSITORY,
   TransactionFilters,
 } from '../ports/TransactionRepository.js';
 import { AccountRepository, ACCOUNT_REPOSITORY } from '../ports/AccountRepository.js';
+import { RecurringRepository, RECURRING_REPOSITORY } from '../ports/RecurringRepository.js';
 import { IdGenerator, ID_GENERATOR } from '../ports/IdGenerator.js';
 import { CreateTransactionDto } from './dto/CreateTransactionDto.js';
 import { UpdateTransactionDto } from './dto/UpdateTransactionDto.js';
@@ -13,11 +21,15 @@ import { AutocompleteResponseDto } from './dto/TransactionResponseDto.js';
 
 @Injectable()
 export class TransactionsService {
+  private readonly recurringScheduler = new RecurringSchedulerService();
+
   constructor(
     @Inject(TRANSACTION_REPOSITORY)
     private readonly txRepo: TransactionRepository,
     @Inject(ACCOUNT_REPOSITORY)
     private readonly accountRepo: AccountRepository,
+    @Inject(RECURRING_REPOSITORY)
+    private readonly recurringRepo: RecurringRepository,
     @Inject(ID_GENERATOR)
     private readonly idGenerator: IdGenerator,
   ) {}
@@ -32,6 +44,95 @@ export class TransactionsService {
     }
 
     const amount = Money.of(dto.amount, dto.currency);
+
+    let recurringTemplate: RecurringTemplate | undefined;
+    const recurringForecastTransactions: Transaction[] = [];
+
+    if (dto.recurring) {
+      const endDate = new Date(dto.recurring.endDate);
+      if (Number.isNaN(endDate.getTime())) {
+        throw new ValidationError('Invalid recurring endDate');
+      }
+
+      const maxEndDate = new Date(txDate);
+      maxEndDate.setUTCFullYear(maxEndDate.getUTCFullYear() + 2);
+
+      if (endDate > maxEndDate) {
+        throw new ValidationError(
+          'Recurring endDate cannot be more than 2 years after transaction date',
+        );
+      }
+
+      const schedule = {
+        frequency: dto.recurring.frequency,
+        interval: dto.recurring.interval,
+        ...(dto.recurring.byDay !== undefined
+          ? { byDay: dto.recurring.byDay }
+          : {}),
+        ...(dto.recurring.byMonthDay !== undefined
+          ? { byMonthDay: dto.recurring.byMonthDay }
+          : {}),
+      };
+
+      const nextRunDate = this.recurringScheduler.computeNextDate(
+        txDate,
+        schedule,
+        dto.recurring.tz ?? 'Europe/Zurich',
+      );
+
+      if (endDate < nextRunDate) {
+        throw new ValidationError(
+          'Recurring endDate must be on or after the next recurring occurrence',
+        );
+      }
+
+      recurringTemplate = RecurringTemplate.create({
+        id: this.idGenerator.generate(),
+        userId,
+        label: dto.label,
+        amount: { value: dto.amount, currency: dto.currency },
+        type: dto.type,
+        categoryId: dto.categoryId,
+        accountId: dto.accountId,
+        schedule,
+        nextRunDate,
+        endDate,
+        tz: dto.recurring.tz,
+      });
+
+      // Pre-generate forecasted recurring instances up to the configured end date
+      // so recurrence is immediately visible to the user.
+      let occurrenceDate = nextRunDate;
+      while (occurrenceDate <= endDate) {
+        const recurringInstanceId = this.recurringScheduler.instanceKey(
+          recurringTemplate.id,
+          occurrenceDate,
+        );
+
+        recurringForecastTransactions.push(
+          Transaction.create({
+            id: this.idGenerator.generate(),
+            userId,
+            accountId: dto.accountId,
+            categoryId: dto.categoryId,
+            subcategory: dto.subcategory,
+            type: dto.type,
+            isForecasted: true,
+            amount,
+            date: occurrenceDate,
+            label: dto.label,
+            note: dto.note,
+            recurringInstanceId,
+          }),
+        );
+
+        occurrenceDate = this.recurringScheduler.computeNextDate(
+          occurrenceDate,
+          schedule,
+          dto.recurring.tz ?? 'Europe/Zurich',
+        );
+      }
+    }
 
     const transaction = Transaction.create({
       id: this.idGenerator.generate(),
@@ -48,6 +149,15 @@ export class TransactionsService {
     });
 
     await this.txRepo.save(transaction);
+
+    for (const recurringTx of recurringForecastTransactions) {
+      await this.txRepo.save(recurringTx);
+    }
+
+    if (recurringTemplate) {
+      await this.recurringRepo.save(recurringTemplate);
+    }
+
     return transaction;
   }
 
@@ -98,6 +208,33 @@ export class TransactionsService {
     const tx = await this.txRepo.findById(userId, id);
     if (!tx) throw new NotFoundError('Transaction', id);
     await this.txRepo.delete(userId, id);
+  }
+
+  async refreshForecast(userId: string): Promise<{ removedCount: number }> {
+    const allTransactions = await this.txRepo.findByUser(userId, { limit: 5000 });
+
+    const latestRealTransactionDate = allTransactions
+      .filter((tx) => !tx.isForecasted)
+      .reduce<Date | null>((latest, tx) => {
+        if (!latest || tx.date > latest) {
+          return tx.date;
+        }
+        return latest;
+      }, null);
+
+    if (!latestRealTransactionDate) {
+      return { removedCount: 0 };
+    }
+
+    const obsoleteForecastTransactions = allTransactions.filter(
+      (tx) => tx.isForecasted && tx.date <= latestRealTransactionDate,
+    );
+
+    for (const forecastTx of obsoleteForecastTransactions) {
+      await this.txRepo.delete(userId, forecastTx.id);
+    }
+
+    return { removedCount: obsoleteForecastTransactions.length };
   }
 
   /**

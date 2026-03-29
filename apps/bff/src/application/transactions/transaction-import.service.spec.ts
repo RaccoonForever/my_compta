@@ -7,14 +7,34 @@ import { Account, Category, Transaction } from '@my-compta/domain';
 
 // Mock implementations
 class MockTransactionsService {
+  constructor(private readonly transactionRepo: MockTransactionRepository) {}
+
   async create(userId: string, dto: any): Promise<any> {
     // Simulate validation that would happen in the real service
     if (dto.date && new Date(dto.date) > new Date()) {
       throw new Error('Transaction date cannot be in the future');
     }
+
+    const id = 'tx-' + Math.random().toString(36).slice(2, 11);
+    const persisted = Transaction.fromPrimitives({
+      id,
+      userId,
+      accountId: dto.accountId,
+      categoryId: dto.categoryId,
+      subcategory: dto.subcategory,
+      type: dto.type,
+      isForecasted: false,
+      amount: { value: dto.amount, currency: dto.currency },
+      date: new Date(dto.date),
+      label: dto.label,
+      note: dto.note,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    this.transactionRepo.addTransaction(persisted);
     
     return {
-      id: 'tx-' + Math.random().toString(36).substr(2, 9),
+      id,
       ...dto,
     };
   }
@@ -24,7 +44,19 @@ class MockTransactionRepository {
   private transactions: Transaction[] = [];
   
   async findByUser(userId: string, filters?: any): Promise<Transaction[]> {
-    return this.transactions;
+    return this.transactions.filter((tx) => {
+      if (tx.userId !== userId) {
+        return false;
+      }
+      if (filters?.accountId && tx.accountId !== filters.accountId) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  addTransaction(tx: Transaction) {
+    this.transactions.push(tx);
   }
   
   setExistingTransactions(txs: Transaction[]) {
@@ -340,6 +372,28 @@ describe('TransactionImportService', () => {
 
       expect(service.isDuplicate(tx, existing)).toBe(true);
     });
+
+    it('should not treat transactions with different references as duplicates', () => {
+      const tx: ImportTransactionDto = {
+        date: '2026-03-01',
+        amount: -50.0,
+        label: 'GROCERY',
+        type: 'expense',
+        reference: 'REF-001',
+      };
+
+      const existing: ImportTransactionDto[] = [
+        {
+          date: '2026-03-01',
+          amount: -50.0,
+          label: 'GROCERY',
+          type: 'expense',
+          reference: 'REF-002',
+        },
+      ];
+
+      expect(service.isDuplicate(tx, existing)).toBe(false);
+    });
   });
 
   describe('confirmImport integration', () => {
@@ -350,8 +404,8 @@ describe('TransactionImportService', () => {
     let mockAccountRepo: MockAccountRepository;
 
     beforeEach(() => {
-      mockTransactionsService = new MockTransactionsService();
       mockTransactionRepo = new MockTransactionRepository();
+      mockTransactionsService = new MockTransactionsService(mockTransactionRepo);
       mockCategoryRepo = new MockCategoryRepository();
       mockAccountRepo = new MockAccountRepository();
 
@@ -424,15 +478,20 @@ describe('TransactionImportService', () => {
     it('should skip duplicate transactions', async () => {
       // Setup existing transaction
       // Note: Transaction entity stores absolute amount
-      const existingTx = Transaction.create({
+      const existingTx = Transaction.fromPrimitives({
         id: 'tx-existing',
         userId: 'user-1',
         accountId: 'acc-1',
-        amount: 50.0, // Stored as absolute value
-        currency: 'EUR',
+        categoryId: undefined,
+        subcategory: undefined,
         type: 'expense',
+        isForecasted: false,
+        amount: { value: 50.0, currency: 'EUR' },
         date: new Date('2026-03-01'),
         label: 'GROCERY',
+        note: undefined,
+        createdAt: new Date('2026-03-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-03-01T00:00:00.000Z'),
       });
       mockTransactionRepo.setExistingTransactions([existingTx]);
 
@@ -474,14 +533,136 @@ describe('TransactionImportService', () => {
 
       const result = await serviceWithMocks.confirmImport('user-1', request);
 
-      // With the fixed duplicate detection, GROCERY should be skipped
-      // But if the mock isn't working, both will be created
-      // For now, let's just verify no errors occurred
-      expect(result.createdCount +result.skippedCount).toBe(2);
+      expect(result.createdCount).toBe(1);
+      expect(result.skippedCount).toBe(1);
       expect(result.failedCount).toBe(0);
-      // TODO: Once duplicate detection is fully working with mocks, uncomment:
-      // expect(result.createdCount).toBe(1); // Only CAFE should be created
-      // expect(result.skippedCount).toBe(1); // GROCERY is duplicate
+    });
+
+    it('should skip duplicates inside the same import batch', async () => {
+      const summary = {
+        totalRows: 2,
+        successCount: 2,
+        errorCount: 0,
+        warningCount: 0,
+        results: [
+          {
+            rowNumber: 1,
+            success: true,
+            transaction: {
+              date: '2026-03-03',
+              amount: -42.5,
+              label: 'RESTAURANT',
+              type: 'expense' as const,
+            },
+          },
+          {
+            rowNumber: 2,
+            success: true,
+            transaction: {
+              date: '2026-03-03',
+              amount: -42.5,
+              label: 'RESTAURANT',
+              type: 'expense' as const,
+            },
+          },
+        ],
+      };
+
+      const request: ConfirmImportRequest = {
+        summary,
+        accountId: 'acc-1',
+        autoMapCategories: false,
+        skipDuplicateCheck: false,
+      };
+
+      const result = await serviceWithMocks.confirmImport('user-1', request);
+
+      expect(result.createdCount).toBe(1);
+      expect(result.skippedCount).toBe(1);
+      expect(result.failedCount).toBe(0);
+    });
+
+    it('should import transactions with same date amount and label when reference differs', async () => {
+      const summary = {
+        totalRows: 2,
+        successCount: 2,
+        errorCount: 0,
+        warningCount: 0,
+        results: [
+          {
+            rowNumber: 1,
+            success: true,
+            transaction: {
+              date: '2026-03-03',
+              amount: -42.5,
+              label: 'RESTAURANT',
+              type: 'expense' as const,
+              reference: 'REF-AAA',
+            },
+          },
+          {
+            rowNumber: 2,
+            success: true,
+            transaction: {
+              date: '2026-03-03',
+              amount: -42.5,
+              label: 'RESTAURANT',
+              type: 'expense' as const,
+              reference: 'REF-BBB',
+            },
+          },
+        ],
+      };
+
+      const request: ConfirmImportRequest = {
+        summary,
+        accountId: 'acc-1',
+        autoMapCategories: false,
+        skipDuplicateCheck: false,
+      };
+
+      const result = await serviceWithMocks.confirmImport('user-1', request);
+
+      expect(result.createdCount).toBe(2);
+      expect(result.skippedCount).toBe(0);
+      expect(result.failedCount).toBe(0);
+    });
+
+    it('should not reimport the same transactions when confirming twice', async () => {
+      const summary = {
+        totalRows: 1,
+        successCount: 1,
+        errorCount: 0,
+        warningCount: 0,
+        results: [
+          {
+            rowNumber: 1,
+            success: true,
+            transaction: {
+              date: '2026-03-04',
+              amount: -18.9,
+              label: 'COFFEE SHOP',
+              type: 'expense' as const,
+            },
+          },
+        ],
+      };
+
+      const request: ConfirmImportRequest = {
+        summary,
+        accountId: 'acc-1',
+        autoMapCategories: false,
+        skipDuplicateCheck: false,
+      };
+
+      const firstImport = await serviceWithMocks.confirmImport('user-1', request);
+      const secondImport = await serviceWithMocks.confirmImport('user-1', request);
+
+      expect(firstImport.createdCount).toBe(1);
+      expect(firstImport.skippedCount).toBe(0);
+      expect(secondImport.createdCount).toBe(0);
+      expect(secondImport.skippedCount).toBe(1);
+      expect(secondImport.failedCount).toBe(0);
     });
 
     it('should auto-map categories when enabled', async () => {

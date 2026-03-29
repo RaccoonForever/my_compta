@@ -32,6 +32,9 @@ export class FirestoreRecurringRepository implements RecurringRepository {
       accountId: data['accountId'] as string,
       schedule: data['schedule'] as RecurringTemplatePrimitives['schedule'],
       nextRunDate: (data['nextRunDate'] as admin.firestore.Timestamp).toDate(),
+      endDate: data['endDate']
+        ? (data['endDate'] as admin.firestore.Timestamp).toDate()
+        : undefined,
       status: data['status'] as RecurringStatus,
       tz: data['tz'] as string,
       createdAt: (data['createdAt'] as admin.firestore.Timestamp).toDate(),

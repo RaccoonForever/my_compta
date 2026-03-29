@@ -8,6 +8,7 @@ import {
   IsNotEmpty,
   MaxLength,
   ValidateNested,
+  IsDateString,
   IsInt,
   Min,
   Max,
@@ -87,4 +88,12 @@ export class CreateRecurringTemplateDto {
   @IsOptional()
   @IsString()
   tz?: string;
+
+  @ApiPropertyOptional({
+    example: '2027-04-01',
+    description: 'Inclusive end date for recurring generation (max 2 years after nextRunDate)',
+  })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 }

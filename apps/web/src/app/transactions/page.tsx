@@ -3,7 +3,14 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
-import { getTransactions, deleteMultipleTransactions, getAccounts, getCategories, updateTransaction } from '@/lib/api';
+import {
+  getTransactions,
+  deleteMultipleTransactions,
+  getAccounts,
+  getCategories,
+  updateTransaction,
+  refreshForecastTransactions,
+} from '@/lib/api';
 import { format, parseISO } from 'date-fns';
 import clsx from 'clsx';
 
@@ -128,6 +135,15 @@ export default function TransactionsPage() {
     },
   });
 
+  const refreshForecastMut = useMutation({
+    mutationFn: () => refreshForecastTransactions(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['transactions'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
+    },
+  });
+
   const handleToggleSelection = (id: string) => {
     const newSet = new Set(selectedIds);
     if (newSet.has(id)) {
@@ -194,6 +210,13 @@ export default function TransactionsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-slate-800">Transactions</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => refreshForecastMut.mutate()}
+            disabled={refreshForecastMut.isPending}
+            className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            {refreshForecastMut.isPending ? 'Refreshing...' : 'Refresh Forecast'}
+          </button>
           {selectedIds.size === 1 && (
             <button
               onClick={handleEditSelected}

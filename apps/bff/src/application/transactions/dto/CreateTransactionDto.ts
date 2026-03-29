@@ -7,12 +7,57 @@ import {
   IsNotEmpty,
   MaxLength,
   IsBoolean,
+  ValidateNested,
+  IsInt,
+  Min,
+  Max,
+  IsDateString,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TransactionType } from '@my-compta/domain';
 import { Currency } from '@my-compta/domain';
+import { RecurringFrequency } from '@my-compta/domain';
 
 const TX_TYPES: TransactionType[] = ['income', 'expense'];
 const CURRENCIES: Currency[] = ['CHF', 'EUR', 'USD', 'GBP'];
+const RECURRING_FREQUENCIES: RecurringFrequency[] = ['daily', 'weekly', 'monthly', 'custom'];
+
+class RecurringConfigDto {
+  @ApiProperty({ enum: RECURRING_FREQUENCIES })
+  @IsIn(RECURRING_FREQUENCIES)
+  frequency!: RecurringFrequency;
+
+  @ApiProperty({ example: 1, description: 'Repeat every N intervals' })
+  @IsInt()
+  @Min(1)
+  interval!: number;
+
+  @ApiPropertyOptional({ example: 1, description: 'Day of month (1-31) for monthly' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  byMonthDay?: number;
+
+  @ApiPropertyOptional({ example: 1, description: 'Day of week (0=Sun) for weekly' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  byDay?: number;
+
+  @ApiProperty({
+    example: '2027-03-01',
+    description: 'Inclusive end date for recurring generation (max 2 years after transaction date)',
+  })
+  @IsDateString()
+  endDate!: string;
+
+  @ApiPropertyOptional({ example: 'Europe/Zurich' })
+  @IsOptional()
+  @IsString()
+  tz?: string;
+}
 
 export class CreateTransactionDto {
   @ApiProperty({ example: 2100 })
@@ -64,4 +109,10 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsBoolean()
   isForecasted?: boolean;
+
+  @ApiPropertyOptional({ type: RecurringConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RecurringConfigDto)
+  recurring?: RecurringConfigDto;
 }

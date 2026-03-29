@@ -148,6 +148,12 @@ export const updateTransaction = (id: string, body: Partial<CreateTransactionBod
 export const deleteTransaction = (id: string) =>
   request<void>(`/transactions/${id}`, { method: 'DELETE' });
 
+export const refreshForecastTransactions = () =>
+  request<{ removedCount: number }>('/transactions/forecast/refresh', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+
 export const deleteMultipleTransactions = async (ids: string[]) => {
   await Promise.all(ids.map(id => deleteTransaction(id)));
 };
@@ -242,6 +248,14 @@ export interface TransactionResponse {
 export interface CreateTransactionBody {
   amount: number; currency: string; type: 'income' | 'expense'; date: string;
   accountId: string; label: string; categoryId?: string; subcategory?: string; note?: string; isForecasted?: boolean;
+  recurring?: {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+    interval: number;
+    byDay?: number;
+    byMonthDay?: number;
+    endDate: string;
+    tz?: string;
+  };
 }
 export interface TransactionFilters {
   accountId?: string; categoryId?: string; type?: 'income' | 'expense';
@@ -260,11 +274,11 @@ export interface CreateCategoryBody {
 export interface RecurringTemplateResponse {
   id: string; label: string; amount: number; currency: string; type: string;
   accountId: string; categoryId?: string; schedule: object;
-  nextRunDate: string; status: string; tz: string; createdAt: string; updatedAt: string;
+  nextRunDate: string; endDate?: string; status: string; tz: string; createdAt: string; updatedAt: string;
 }
 export interface CreateRecurringBody {
   label: string; amount: number; currency: string; type: string;
-  accountId: string; categoryId?: string; schedule: object; nextRunDate: string; tz?: string;
+  accountId: string; categoryId?: string; schedule: object; nextRunDate: string; endDate?: string; tz?: string;
 }
 export interface DashboardResponse {
   totalCash: number; baseCurrency: string; endOfMonthProjection: number;

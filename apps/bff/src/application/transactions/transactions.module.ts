@@ -5,9 +5,11 @@ import { TransactionImportService } from './transaction-import.service.js';
 import { TRANSACTION_REPOSITORY } from '../ports/TransactionRepository.js';
 import { ACCOUNT_REPOSITORY } from '../ports/AccountRepository.js';
 import { CATEGORY_REPOSITORY } from '../ports/CategoryRepository.js';
+import { RECURRING_REPOSITORY } from '../ports/RecurringRepository.js';
 import { FirestoreTransactionRepository } from '../../infrastructure/adapters/firestore/FirestoreTransactionRepository.js';
 import { FirestoreAccountRepository } from '../../infrastructure/adapters/firestore/FirestoreAccountRepository.js';
 import { FirestoreCategoryRepository } from '../../infrastructure/adapters/firestore/FirestoreCategoryRepository.js';
+import { FirestoreRecurringRepository } from '../../infrastructure/adapters/firestore/FirestoreRecurringRepository.js';
 import { ID_GENERATOR, UuidGenerator } from '../ports/IdGenerator.js';
 import { CsvParserService } from '../../infrastructure/adapters/csv/CsvParserService.js';
 
@@ -20,6 +22,7 @@ import { CsvParserService } from '../../infrastructure/adapters/csv/CsvParserSer
     { provide: TRANSACTION_REPOSITORY, useClass: FirestoreTransactionRepository },
     { provide: ACCOUNT_REPOSITORY, useClass: FirestoreAccountRepository },
     { provide: CATEGORY_REPOSITORY, useClass: FirestoreCategoryRepository },
+    { provide: RECURRING_REPOSITORY, useClass: FirestoreRecurringRepository },
     { provide: ID_GENERATOR, useClass: UuidGenerator },
   ],
   exports: [TransactionsService, TransactionImportService, TRANSACTION_REPOSITORY],

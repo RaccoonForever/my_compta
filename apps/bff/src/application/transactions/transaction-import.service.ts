@@ -335,12 +335,44 @@ export class TransactionImportService {
     transaction: ImportTransactionDto,
     existing: ImportTransactionDto[],
   ): boolean {
-    return existing.some(
-      (t) =>
-        t.date === transaction.date &&
-        Math.abs(t.amount - transaction.amount) < 0.01 &&
-        t.label === transaction.label,
-    );
+    return existing.some((t) => this.areDuplicateTransactions(transaction, t));
+  }
+
+  private areDuplicateTransactions(
+    first: ImportTransactionDto,
+    second: ImportTransactionDto,
+  ): boolean {
+    const firstAmountInCents = Math.round(first.amount * 100);
+    const secondAmountInCents = Math.round(second.amount * 100);
+
+    const sameCoreIdentity =
+      first.date === second.date &&
+      firstAmountInCents === secondAmountInCents &&
+      first.label === second.label;
+
+    if (!sameCoreIdentity) {
+      return false;
+    }
+
+    const firstReference = this.normalizeReference(first.reference);
+    const secondReference = this.normalizeReference(second.reference);
+
+    // If both sides have a reference, it must match to be considered a duplicate.
+    // If one side has no reference, keep legacy behavior and match on core identity.
+    if (firstReference && secondReference) {
+      return firstReference === secondReference;
+    }
+
+    return true;
+  }
+
+  private normalizeReference(reference?: string): string | undefined {
+    if (!reference) {
+      return undefined;
+    }
+
+    const normalized = reference.trim();
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   /**
@@ -383,10 +415,16 @@ export class TransactionImportService {
         }),
       );
 
-      // Filter out duplicates
-      transactionsToImport = successfulTransactions.filter(
-        (tx) => !this.isDuplicate(tx, existingImportFormat),
-      );
+      // Filter out duplicates against existing transactions and within the same import batch.
+      const seenTransactions = [...existingImportFormat];
+      transactionsToImport = successfulTransactions.filter((tx) => {
+        if (this.isDuplicate(tx, seenTransactions)) {
+          return false;
+        }
+
+        seenTransactions.push(tx);
+        return true;
+      });
 
       skippedCount = successfulTransactions.length - transactionsToImport.length;
     }

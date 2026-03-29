@@ -55,6 +55,16 @@ function makeAccountRepo() {
   };
 }
 
+function makeRecurringRepo() {
+  return {
+    save: vi.fn().mockResolvedValue(undefined),
+    findById: vi.fn().mockResolvedValue(null),
+    findAllByUser: vi.fn().mockResolvedValue([]),
+    findDue: vi.fn().mockResolvedValue([]),
+    delete: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 function makeIdGenerator(id = 'generated-id') {
   return { generate: vi.fn().mockReturnValue(id) };
 }
@@ -65,6 +75,7 @@ describe('TransactionsService', () => {
   let service: TransactionsService;
   let txRepo: ReturnType<typeof makeTxRepo>;
   let accountRepo: ReturnType<typeof makeAccountRepo>;
+  let recurringRepo: ReturnType<typeof makeRecurringRepo>;
   let idGen: ReturnType<typeof makeIdGenerator>;
 
   const TODAY = new Date();
@@ -84,11 +95,13 @@ describe('TransactionsService', () => {
   beforeEach(() => {
     txRepo = makeTxRepo();
     accountRepo = makeAccountRepo();
+    recurringRepo = makeRecurringRepo();
     idGen = makeIdGenerator('new-id');
 
     service = new TransactionsService(
       txRepo as any,
       accountRepo as any,
+      recurringRepo as any,
       idGen as any,
     );
   });
@@ -173,6 +186,93 @@ describe('TransactionsService', () => {
       expect(tx.amount.value).toBe(200);
       expect(tx.accountId).toBe('acc-1');
     });
+
+    it('creates a recurring template when recurring config is provided', async () => {
+      accountRepo.findById.mockResolvedValue(mockAccount);
+
+      await service.create('user-1', {
+        type: 'income',
+        amount: 2000,
+        currency: 'CHF',
+        date: '2026-03-01',
+        accountId: 'acc-1',
+        label: 'Salary',
+        recurring: {
+          frequency: 'monthly',
+          interval: 1,
+          byMonthDay: 1,
+          endDate: '2027-03-01',
+          tz: 'Europe/Zurich',
+        },
+      });
+
+      expect(recurringRepo.save).toHaveBeenCalledOnce();
+      const savedTemplate = recurringRepo.save.mock.calls[0]?.[0];
+      expect(savedTemplate.label).toBe('Salary');
+      expect(savedTemplate.schedule.frequency).toBe('monthly');
+      expect(savedTemplate.endDate.toISOString().slice(0, 10)).toBe('2027-03-01');
+
+      const persisted = savedTemplate.toPrimitives();
+      expect('byDay' in persisted.schedule).toBe(false);
+      expect(persisted.schedule.byMonthDay).toBe(1);
+
+      // 1 initial transaction + 12 monthly forecasted transactions
+      expect(txRepo.save).toHaveBeenCalledTimes(13);
+
+      const savedTransactions = txRepo.save.mock.calls.map(call => call[0]);
+      const forecasted = savedTransactions.filter((tx: Transaction) => tx.isForecasted);
+      expect(forecasted.length).toBe(12);
+      expect(
+        forecasted.every((tx: Transaction) => tx.recurringInstanceId !== undefined),
+      ).toBe(true);
+    });
+
+    it('creates daily recurring forecasted transactions up to endDate', async () => {
+      accountRepo.findById.mockResolvedValue(mockAccount);
+
+      await service.create('user-1', {
+        type: 'expense',
+        amount: 10,
+        currency: 'CHF',
+        date: '2026-03-01',
+        accountId: 'acc-1',
+        label: 'Coffee',
+        recurring: {
+          frequency: 'daily',
+          interval: 1,
+          endDate: '2026-03-03',
+        },
+      });
+
+      // 1 initial + 2 future daily occurrences (02 and 03)
+      expect(txRepo.save).toHaveBeenCalledTimes(3);
+
+      const savedTransactions = txRepo.save.mock.calls.map(call => call[0] as Transaction);
+      const forecasted = savedTransactions.filter(tx => tx.isForecasted);
+      expect(forecasted.length).toBe(2);
+      expect(forecasted[0]?.date.toISOString().slice(0, 10)).toBe('2026-03-02');
+      expect(forecasted[1]?.date.toISOString().slice(0, 10)).toBe('2026-03-03');
+    });
+
+    it('rejects recurring endDate beyond 2 years', async () => {
+      accountRepo.findById.mockResolvedValue(mockAccount);
+
+      await expect(service.create('user-1', {
+        type: 'expense',
+        amount: 150,
+        currency: 'CHF',
+        date: '2026-03-01',
+        accountId: 'acc-1',
+        label: 'Long running',
+        recurring: {
+          frequency: 'monthly',
+          interval: 1,
+          endDate: '2028-03-02',
+        },
+      })).rejects.toThrow(ValidationError);
+
+      expect(recurringRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   // ── delete ────────────────────────────────────────────────────────────────
@@ -200,6 +300,34 @@ describe('TransactionsService', () => {
 
       expect(txRepo.delete).toHaveBeenCalledOnce();
       expect(txRepo.delete).toHaveBeenCalledWith('user-1', 'tx-1');
+    });
+  });
+
+  describe('refreshForecast', () => {
+    it('removes forecast transactions up to latest real transaction date', async () => {
+      const real = makeTx({ id: 'real-1', isForecasted: false, date: new Date('2026-03-10') });
+      const oldForecast = makeTx({ id: 'f-old', isForecasted: true, date: new Date('2026-03-05') });
+      const sameDayForecast = makeTx({ id: 'f-same', isForecasted: true, date: new Date('2026-03-10') });
+      const futureForecast = makeTx({ id: 'f-future', isForecasted: true, date: new Date('2026-03-11') });
+
+      txRepo.findByUser.mockResolvedValue([real, oldForecast, sameDayForecast, futureForecast]);
+
+      const result = await service.refreshForecast('user-1');
+
+      expect(result.removedCount).toBe(2);
+      expect(txRepo.delete).toHaveBeenCalledTimes(2);
+      expect(txRepo.delete).toHaveBeenNthCalledWith(1, 'user-1', 'f-old');
+      expect(txRepo.delete).toHaveBeenNthCalledWith(2, 'user-1', 'f-same');
+    });
+
+    it('does nothing when user has no real transaction', async () => {
+      const forecastOnly = makeTx({ id: 'f-only', isForecasted: true, date: new Date('2026-03-11') });
+      txRepo.findByUser.mockResolvedValue([forecastOnly]);
+
+      const result = await service.refreshForecast('user-1');
+
+      expect(result.removedCount).toBe(0);
+      expect(txRepo.delete).not.toHaveBeenCalled();
     });
   });
 

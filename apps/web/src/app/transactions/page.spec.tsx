@@ -13,6 +13,7 @@ vi.mock('@/lib/api', async () => {
     getAccounts: vi.fn(),
     getCategories: vi.fn(),
     updateTransaction: vi.fn(),
+    refreshForecastTransactions: vi.fn(),
   };
 });
 
@@ -20,6 +21,7 @@ const mockGetTransactions = vi.mocked(api.getTransactions);
 const mockGetAccounts = vi.mocked(api.getAccounts);
 const mockGetCategories = vi.mocked(api.getCategories);
 const mockUpdateTransaction = vi.mocked(api.updateTransaction);
+const mockRefreshForecastTransactions = vi.mocked(api.refreshForecastTransactions);
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -100,6 +102,23 @@ describe('TransactionsPage', () => {
       createdAt: '2024-02-02T00:00:00.000Z',
       updatedAt: '2024-02-02T00:00:00.000Z',
     } as any);
+
+    mockRefreshForecastTransactions.mockResolvedValue({ removedCount: 1 });
+  });
+
+  it('refreshes forecast transactions when clicking Refresh Forecast', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Refresh Forecast')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Refresh Forecast'));
+
+    await waitFor(() => {
+      expect(mockRefreshForecastTransactions).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('renders forecast column with badge labels', async () => {

@@ -11,6 +11,7 @@ export class RecurringTemplateResponseDto {
   @ApiPropertyOptional() categoryId?: string;
   @ApiProperty() schedule!: RecurringTemplatePrimitives['schedule'];
   @ApiProperty() nextRunDate!: string;
+  @ApiPropertyOptional() endDate?: string;
   @ApiProperty() status!: string;
   @ApiProperty() tz!: string;
   @ApiProperty() createdAt!: string;
@@ -27,6 +28,7 @@ export class RecurringTemplateResponseDto {
     dto.categoryId = p.categoryId;
     dto.schedule = p.schedule;
     dto.nextRunDate = p.nextRunDate.toISOString();
+    dto.endDate = p.endDate?.toISOString();
     dto.status = p.status;
     dto.tz = p.tz;
     dto.createdAt = p.createdAt.toISOString();
