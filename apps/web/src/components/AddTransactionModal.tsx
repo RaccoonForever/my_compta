@@ -7,6 +7,7 @@ import {
   createTransaction,
   getAccounts,
   getCategories,
+  getProjects,
   autocomplete,
   type CreateTransactionBody,
 } from '@/lib/api';
@@ -63,6 +64,7 @@ export function AddTransactionModal({ open, onClose }: Props) {
   const [categoryId, setCategoryId] = useState('');
   const [subcategory, setSubcategory] = useState('');
   const [note, setNote] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const [isForecasted, setIsForecasted] = useState(false);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('monthly');
@@ -73,6 +75,7 @@ export function AddTransactionModal({ open, onClose }: Props) {
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => getSettings() });
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => getAccounts() });
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: () => getCategories() });
+  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
 
   const filteredCategories = categories.filter(c =>
     type === 'income' ? c.kind === 'income' : c.kind === 'expense',
@@ -104,6 +107,7 @@ export function AddTransactionModal({ open, onClose }: Props) {
     setCategoryId('');
     setSubcategory('');
     setNote('');
+    setSelectedProjectId('');
     setIsForecasted(false);
     setIsRecurring(false);
     setRecurringFrequency('monthly');
@@ -199,6 +203,7 @@ export function AddTransactionModal({ open, onClose }: Props) {
         categoryId: categoryId || undefined,
         subcategory: subcategory || undefined,
         note: note || undefined,
+        projectIds: selectedProjectId ? [selectedProjectId] : undefined,
         isForecasted,
         recurring: isRecurring
           ? {
@@ -350,6 +355,25 @@ export function AddTransactionModal({ open, onClose }: Props) {
           onChange={e => setNote(e.target.value)}
           className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
         />
+
+        {/* Projects */}
+        <div className="space-y-1">
+          <label className="text-sm text-slate-700 font-medium">Projects (optional)</label>
+          {projects.length === 0 ? (
+            <p className="text-xs text-slate-500">No projects yet. Create one in Settings.</p>
+          ) : (
+            <select
+              value={selectedProjectId}
+              onChange={e => setSelectedProjectId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+            >
+              <option value="">No project</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
 
         {/* Forecasted */}
         <label className="flex items-center gap-2 text-sm text-slate-600">

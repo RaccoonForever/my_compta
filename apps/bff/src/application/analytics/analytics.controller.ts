@@ -53,4 +53,14 @@ export class AnalyticsController {
       new Date(to),
     );
   }
+
+  @Get('project')
+  @ApiOperation({ summary: 'Project analytics: summary + transactions for a selected project' })
+  @ApiQuery({ name: 'projectId', required: true })
+  async getProjectAnalytics(
+    @Request() req: AuthRequest,
+    @Query('projectId') projectId: string,
+  ) {
+    return this.analyticsService.getProjectAnalytics(req.user.uid, projectId);
+  }
 }

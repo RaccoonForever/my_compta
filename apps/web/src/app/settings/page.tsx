@@ -9,11 +9,13 @@ import {
   getCategories, createCategory, updateCategory, deleteCategory,
   seedDefaultCategories,
   getRecurringTemplates, createRecurringTemplate, pauseRecurring, resumeRecurring, deleteRecurring,
+  getProjects, createProject, updateProject, deleteProject,
   type CategoryResponse, type CreateCategoryBody, type RecurringTemplateResponse,
-  type LinkedTransaction, CategoryConflictError,
+  type ProjectResponse, type CreateProjectBody,
+  type LinkedTransaction, CategoryConflictError, ProjectConflictError,
 } from '@/lib/api';
 
-type Tab = 'general' | 'categories' | 'recurring';
+type Tab = 'general' | 'categories' | 'recurring' | 'projects';
 
 const CURRENCIES = ['CHF', 'EUR', 'USD', 'GBP'];
 
@@ -24,6 +26,7 @@ export default function SettingsPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'general', label: 'General' },
     { key: 'categories', label: 'Categories' },
+    { key: 'projects', label: 'Projects' },
     { key: 'recurring', label: 'Recurring' },
   ];
 
@@ -50,6 +53,7 @@ export default function SettingsPage() {
 
       {tab === 'general' && <GeneralTab qc={qc} />}
       {tab === 'categories' && <CategoriesTab qc={qc} />}
+      {tab === 'projects' && <ProjectsTab qc={qc} />}
       {tab === 'recurring' && <RecurringTab qc={qc} />}
     </div>
   );
@@ -699,6 +703,202 @@ function CategoriesTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           void qc.invalidateQueries({ queryKey: ['categories'] });
         }}
       />
+    </div>
+  );
+}
+
+// ── Projects ───────────────────────────────────────────────────────────────────
+function ProjectsTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const { data: projects = [], isLoading, isError } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => getProjects(false),
+  });
+  const [form, setForm] = useState<CreateProjectBody>({ name: '', description: '', color: '#6366f1' });
+  const [editing, setEditing] = useState<ProjectResponse | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ projectId: string; projectName: string } | null>(null);
+  const [conflict, setConflict] = useState<{ message: string; transactions: LinkedTransaction[]; total: number } | null>(null);
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      editing ? updateProject(editing.id, form) : createProject(form),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      setEditing(null);
+      setForm({ name: '', description: '', color: '#6366f1' });
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: deleteProject,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      setDeleteModal(null);
+      setConflict(null);
+    },
+    onError: (err) => {
+      if (err instanceof ProjectConflictError) {
+        setConflict({ message: err.message, transactions: err.transactions, total: err.total });
+      } else {
+        setDeleteModal(null);
+      }
+    },
+  });
+
+  const COLOR_OPTIONS = [
+    { value: '#6366f1', label: 'Indigo' },
+    { value: '#ef4444', label: 'Red' },
+    { value: '#f97316', label: 'Orange' },
+    { value: '#eab308', label: 'Yellow' },
+    { value: '#22c55e', label: 'Green' },
+    { value: '#0ea5e9', label: 'Blue' },
+    { value: '#8b5cf6', label: 'Purple' },
+    { value: '#ec4899', label: 'Pink' },
+  ];
+
+  if (isLoading) return <div className="text-slate-400 text-sm">Loading…</div>;
+  if (isError) return <div className="text-red-500 text-sm">Failed to load projects</div>;
+
+  return (
+    <div className="space-y-4">
+      {/* Quick form */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-700">
+          {editing ? 'Edit Project' : 'New Project'}
+        </h3>
+
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Name</label>
+            <input
+              placeholder="e.g., Home Renovation"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+            />
+          </div>
+
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Description (optional)</label>
+            <input
+              placeholder="e.g., Buying & renovating a flat"
+              value={form.description ?? ''}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Color</label>
+            <div className="flex gap-2">
+              {COLOR_OPTIONS.map(color => (
+                <button
+                  key={color.value}
+                  onClick={() => setForm(f => ({ ...f, color: color.value }))}
+                  title={color.label}
+                  className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                    form.color === color.value
+                      ? 'border-slate-800'
+                      : 'border-transparent hover:border-slate-400'
+                  }`}
+                  style={{ backgroundColor: color.value }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => saveMut.mutate()}
+              disabled={!form.name || saveMut.isPending}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+            >
+              {editing ? 'Update' : 'Add'}
+            </button>
+            {editing && (
+              <button
+                onClick={() => {
+                  setEditing(null);
+                  setForm({ name: '', description: '', color: '#6366f1' });
+                }}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-500"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Projects list */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {projects.length === 0 ? (
+          <p className="px-5 py-10 text-slate-400 text-sm text-center">No projects yet.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {projects.map(project => (
+              <div
+                key={project.id}
+                className="px-5 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors"
+              >
+                <div
+                  className="w-4 h-4 rounded shrink-0"
+                  style={{ backgroundColor: project.color ?? '#6366f1' }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-slate-800">{project.name}</p>
+                  {project.description && (
+                    <p className="text-xs text-slate-400 truncate">{project.description}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setEditing(project);
+                    setForm({
+                      name: project.name,
+                      description: project.description,
+                      color: project.color,
+                    });
+                  }}
+                  className="text-xs text-primary-600 hover:underline shrink-0"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => setDeleteModal({ projectId: project.id, projectName: project.name })}
+                  disabled={deleteMut.isPending}
+                  className="text-xs text-red-400 hover:text-red-600 hover:underline disabled:opacity-50 shrink-0"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Delete confirmation modal */}
+      {deleteModal && (
+        <ConfirmationModal
+          open={true}
+          title={`Delete "${deleteModal.projectName}"?`}
+          message={
+            conflict
+              ? `${conflict.message} (${conflict.total} transaction${conflict.total !== 1 ? 's' : ''})`
+              : 'This project will be permanently deleted.'
+          }
+          confirmText="Delete"
+          cancelText="Cancel"
+          isDangerous={true}
+          isLoading={deleteMut.isPending}
+          onConfirm={() => void deleteMut.mutate(deleteModal.projectId)}
+          onCancel={() => {
+            setDeleteModal(null);
+            setConflict(null);
+          }}
+        />
+      )}
+
+      {saveMut.isError && <p className="text-red-500 text-sm">{(saveMut.error as Error).message}</p>}
     </div>
   );
 }

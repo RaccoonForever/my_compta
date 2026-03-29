@@ -65,6 +65,15 @@ A minimalist, ergonomic web app to track **incoming/outgoing cash**, **where it 
 - [ ] Default set (Housing, Taxes, Credit repayment, Subscriptions, Leisure, Transport, etc.)
 - [ ] Category colors and icons (optional)
 
+### 5.5) Projects (Tags)
+- [x] **Project manager** (create, edit, archive)
+- [x] **Tag transactions with multiple projects**
+- [x] **Projects tab in Settings** (manage, delete, colors)
+- [x] **Add/edit projects directly from transaction modal**
+- [x] **Projects column in transactions table** (shows all tags with colors)
+- [x] **Default no tags** on new transactions
+- [x] **Bulk project operations** (prevent deletion if linked to transactions)
+
 ### 6) Analytics & Reporting
 - [ ] **Yearly earnings**: total per year + monthly bars
 - [ ] **Expenses by category**: monthly & yearly breakdown

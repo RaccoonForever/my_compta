@@ -123,6 +123,7 @@ export class TransactionsService {
             label: dto.label,
             note: dto.note,
             recurringInstanceId,
+            projectIds: dto.projectIds,
           }),
         );
 
@@ -146,6 +147,7 @@ export class TransactionsService {
       date: txDate,
       label: dto.label,
       note: dto.note,
+      projectIds: dto.projectIds,
     });
 
     await this.txRepo.save(transaction);
@@ -191,13 +193,14 @@ export class TransactionsService {
       accountId: existing.accountId,
       categoryId: dto.categoryId ?? existing.categoryId,
       subcategory: dto.subcategory !== undefined ? dto.subcategory : existing.subcategory,
-      type: existing.type,
+      type: dto.type ?? existing.type,
       isForecasted: dto.isForecasted ?? existing.isForecasted,
       amount: newAmount,
       date: newDate,
       label: dto.label ?? existing.label,
       note: dto.note ?? existing.note,
       recurringInstanceId: existing.recurringInstanceId,
+      projectIds: dto.projectIds ?? existing.projectIds,
     });
 
     await this.txRepo.save(updated);

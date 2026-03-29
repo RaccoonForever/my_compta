@@ -12,6 +12,7 @@ import {
   Min,
   Max,
   IsDateString,
+  IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TransactionType } from '@my-compta/domain';
@@ -109,6 +110,12 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsBoolean()
   isForecasted?: boolean;
+
+  @ApiPropertyOptional({ example: ['project-id-1', 'project-id-2'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  projectIds?: string[];
 
   @ApiPropertyOptional({ type: RecurringConfigDto })
   @IsOptional()

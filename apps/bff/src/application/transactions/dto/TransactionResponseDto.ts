@@ -6,6 +6,7 @@ export class TransactionResponseDto {
   @ApiProperty() accountId!: string;
   @ApiPropertyOptional() categoryId?: string;
   @ApiPropertyOptional() subcategory?: string;
+  @ApiPropertyOptional({ type: [String] }) projectIds?: string[];
   @ApiProperty() type!: string;
   @ApiProperty() isForecasted!: boolean;
   @ApiProperty() amount!: number;
@@ -22,6 +23,7 @@ export class TransactionResponseDto {
     dto.accountId = p.accountId;
     dto.categoryId = p.categoryId;
     dto.subcategory = p.subcategory;
+    dto.projectIds = p.projectIds;
     dto.type = p.type;
     dto.isForecasted = p.isForecasted;
     dto.amount = p.amount.value;

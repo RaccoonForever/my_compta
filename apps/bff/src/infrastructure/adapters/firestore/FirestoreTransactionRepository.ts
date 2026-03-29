@@ -25,6 +25,24 @@ export class FirestoreTransactionRepository implements TransactionRepository {
     id: string,
     data: admin.firestore.DocumentData,
   ): TransactionPrimitives {
+    const rawProjectIds = data['projectIds'] as unknown;
+    const legacyProjectId = data['projectId'] as unknown;
+    const normalizedProjectIds = new Set<string>();
+
+    if (Array.isArray(rawProjectIds)) {
+      for (const id of rawProjectIds) {
+        if (typeof id === 'string' && id.length > 0) normalizedProjectIds.add(id);
+      }
+    } else if (typeof rawProjectIds === 'string' && rawProjectIds.length > 0) {
+      normalizedProjectIds.add(rawProjectIds);
+    }
+
+    if (typeof legacyProjectId === 'string' && legacyProjectId.length > 0) {
+      normalizedProjectIds.add(legacyProjectId);
+    }
+
+    const projectIds = normalizedProjectIds.size > 0 ? [...normalizedProjectIds] : undefined;
+
     return {
       id,
       userId: data['userId'] as string,
@@ -38,6 +56,7 @@ export class FirestoreTransactionRepository implements TransactionRepository {
       label: data['label'] as string,
       note: data['note'] as string | undefined,
       recurringInstanceId: data['recurringInstanceId'] as string | undefined,
+      ...(projectIds !== undefined ? { projectIds } : {}),
       createdAt: (data['createdAt'] as admin.firestore.Timestamp).toDate(),
       updatedAt: (data['updatedAt'] as admin.firestore.Timestamp).toDate(),
     };

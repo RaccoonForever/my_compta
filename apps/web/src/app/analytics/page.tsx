@@ -18,6 +18,11 @@ const PAGES = [
     title: 'Categories Analytics',
     description: 'Category spending patterns and breakdowns.',
   },
+  {
+    href: '/analytics/projects',
+    title: 'Projects Analytics',
+    description: 'Analyze one project at a time with income and expense totals.',
+  },
 ];
 
 export default function AnalyticsIndexPage() {
@@ -27,7 +32,7 @@ export default function AnalyticsIndexPage() {
         <h1 className="text-xl font-bold text-slate-800">Analytics</h1>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {PAGES.map(page => (
           <Link
             key={page.href}

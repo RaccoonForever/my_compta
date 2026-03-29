@@ -12,6 +12,7 @@ vi.mock('@/lib/api', async () => {
     deleteMultipleTransactions: vi.fn(),
     getAccounts: vi.fn(),
     getCategories: vi.fn(),
+    getProjects: vi.fn(),
     updateTransaction: vi.fn(),
     refreshForecastTransactions: vi.fn(),
   };
@@ -20,6 +21,7 @@ vi.mock('@/lib/api', async () => {
 const mockGetTransactions = vi.mocked(api.getTransactions);
 const mockGetAccounts = vi.mocked(api.getAccounts);
 const mockGetCategories = vi.mocked(api.getCategories);
+const mockGetProjects = vi.mocked(api.getProjects);
 const mockUpdateTransaction = vi.mocked(api.updateTransaction);
 const mockRefreshForecastTransactions = vi.mocked(api.refreshForecastTransactions);
 
@@ -64,6 +66,25 @@ describe('TransactionsPage', () => {
         isArchived: false,
         createdAt: '2024-01-01T00:00:00.000Z',
       },
+      {
+        id: 'cat-2',
+        name: 'Salary category',
+        kind: 'income',
+        subcategories: ['Monthly', 'Bonus'],
+        isArchived: false,
+        createdAt: '2024-01-01T00:00:00.000Z',
+      },
+    ] as any);
+
+    mockGetProjects.mockResolvedValue([
+      {
+        id: 'proj-1',
+        name: 'Flat renovation',
+        color: '#22c55e',
+        isArchived: false,
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
     ] as any);
 
     mockGetTransactions.mockResolvedValue([
@@ -77,6 +98,7 @@ describe('TransactionsPage', () => {
         date: '2024-02-01T00:00:00.000Z',
         label: 'Groceries',
         categoryId: 'cat-1',
+        projectIds: ['proj-1'],
       },
       {
         id: 'tx-2',
@@ -132,6 +154,15 @@ describe('TransactionsPage', () => {
     expect(screen.getAllByText('Actual').length).toBeGreaterThan(0);
   });
 
+  it('renders project tags in the projects column', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Projects')).toBeInTheDocument();
+      expect(screen.getByText('Flat renovation')).toBeInTheDocument();
+    });
+  });
+
   it('shows applied filters summary in all transactions tab', async () => {
     renderPage();
 
@@ -182,7 +213,223 @@ describe('TransactionsPage', () => {
 
     await user.click(checkboxes[1]!);
     expect(screen.queryByText('Edit')).toBeNull();
+    expect(screen.getByText('Edit selected')).toBeInTheDocument();
     expect(screen.getByText('Delete 2 selected')).toBeInTheDocument();
+  });
+
+  it('bulk edits category, subcategory, and project for all selected rows', async () => {
+    mockGetTransactions.mockResolvedValue([
+      {
+        id: 'tx-1',
+        accountId: 'acc-1',
+        amount: 50,
+        currency: 'CHF',
+        type: 'expense',
+        isForecasted: true,
+        date: '2024-02-01T00:00:00.000Z',
+        label: 'Groceries',
+      },
+      {
+        id: 'tx-4',
+        accountId: 'acc-1',
+        amount: 30,
+        currency: 'CHF',
+        type: 'expense',
+        isForecasted: false,
+        date: '2024-02-04T00:00:00.000Z',
+        label: 'Restaurant bill',
+      },
+    ] as any);
+
+    renderPage();
+
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeInTheDocument();
+      expect(screen.getByText('Restaurant bill')).toBeInTheDocument();
+    });
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[1]!);
+    await user.click(checkboxes[2]!);
+
+    await user.click(screen.getByText('Edit selected'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('bulk-edit-modal')).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText('Category'), 'cat-1');
+    await user.selectOptions(screen.getByLabelText('Subcategory'), 'Restaurant');
+    await user.selectOptions(screen.getByLabelText('Project'), 'proj-1');
+
+    await user.click(screen.getByText('Apply to 2'));
+
+    await waitFor(() => {
+      expect(mockUpdateTransaction).toHaveBeenCalledTimes(2);
+    });
+
+    expect(mockUpdateTransaction).toHaveBeenNthCalledWith(
+      1,
+      'tx-1',
+      expect.objectContaining({
+        categoryId: 'cat-1',
+        subcategory: 'Restaurant',
+        projectIds: ['proj-1'],
+      }),
+    );
+    expect(mockUpdateTransaction).toHaveBeenNthCalledWith(
+      2,
+      'tx-4',
+      expect.objectContaining({
+        categoryId: 'cat-1',
+        subcategory: 'Restaurant',
+        projectIds: ['proj-1'],
+      }),
+    );
+  });
+
+  it('allows only project changes when mixed income and expense are selected', async () => {
+    renderPage();
+
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeInTheDocument();
+      expect(screen.getByText('Salary')).toBeInTheDocument();
+    });
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[1]!);
+    await user.click(checkboxes[2]!);
+
+    await user.click(screen.getByText('Edit selected'));
+
+    const categorySelect = await screen.findByLabelText('Category');
+    const subcategorySelect = screen.getByLabelText('Subcategory');
+
+    expect(categorySelect).toBeDisabled();
+    expect(subcategorySelect).toBeDisabled();
+    expect(
+      screen.getByText('Mixed income and expense selection: category and subcategory cannot be edited together.'),
+    ).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Project'), 'proj-1');
+    await user.click(screen.getByText('Apply to 2'));
+
+    await waitFor(() => {
+      expect(mockUpdateTransaction).toHaveBeenCalledTimes(2);
+    });
+
+    expect(mockUpdateTransaction).toHaveBeenNthCalledWith(
+      1,
+      'tx-1',
+      expect.objectContaining({ projectIds: ['proj-1'] }),
+    );
+    expect(mockUpdateTransaction).toHaveBeenNthCalledWith(
+      2,
+      'tx-2',
+      expect.objectContaining({ projectIds: ['proj-1'] }),
+    );
+  });
+
+  it('shows only income categories and subcategories when only income rows are selected', async () => {
+    mockGetTransactions.mockResolvedValue([
+      {
+        id: 'tx-2',
+        accountId: 'acc-1',
+        amount: 200,
+        currency: 'CHF',
+        type: 'income',
+        isForecasted: false,
+        date: '2024-02-02T00:00:00.000Z',
+        label: 'Salary',
+      },
+      {
+        id: 'tx-3',
+        accountId: 'acc-1',
+        amount: 120,
+        currency: 'CHF',
+        type: 'income',
+        isForecasted: false,
+        date: '2024-02-03T00:00:00.000Z',
+        label: 'Bonus',
+      },
+    ] as any);
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText('Salary')).toBeInTheDocument();
+      expect(screen.getByText('Bonus')).toBeInTheDocument();
+    });
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[1]!);
+    await user.click(checkboxes[2]!);
+    await user.click(screen.getByText('Edit selected'));
+
+    const categorySelect = await screen.findByLabelText('Category');
+    expect(within(categorySelect).getByRole('option', { name: 'Salary category' })).toBeInTheDocument();
+    expect(within(categorySelect).queryByRole('option', { name: 'Food' })).toBeNull();
+
+    await user.selectOptions(categorySelect, 'cat-2');
+
+    const subcategorySelect = screen.getByLabelText('Subcategory');
+    expect(within(subcategorySelect).getByRole('option', { name: 'Monthly' })).toBeInTheDocument();
+    expect(within(subcategorySelect).getByRole('option', { name: 'Bonus' })).toBeInTheDocument();
+    expect(within(subcategorySelect).queryByRole('option', { name: 'Groceries' })).toBeNull();
+  });
+
+  it('shows only expense categories and subcategories when only expense rows are selected', async () => {
+    mockGetTransactions.mockResolvedValue([
+      {
+        id: 'tx-1',
+        accountId: 'acc-1',
+        amount: 50,
+        currency: 'CHF',
+        type: 'expense',
+        isForecasted: true,
+        date: '2024-02-01T00:00:00.000Z',
+        label: 'Groceries',
+      },
+      {
+        id: 'tx-4',
+        accountId: 'acc-1',
+        amount: 30,
+        currency: 'CHF',
+        type: 'expense',
+        isForecasted: false,
+        date: '2024-02-04T00:00:00.000Z',
+        label: 'Restaurant',
+      },
+    ] as any);
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeInTheDocument();
+      expect(screen.getByText('Restaurant')).toBeInTheDocument();
+    });
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[1]!);
+    await user.click(checkboxes[2]!);
+    await user.click(screen.getByText('Edit selected'));
+
+    const categorySelect = await screen.findByLabelText('Category');
+    expect(within(categorySelect).getByRole('option', { name: 'Food' })).toBeInTheDocument();
+    expect(within(categorySelect).queryByRole('option', { name: 'Salary category' })).toBeNull();
+
+    await user.selectOptions(categorySelect, 'cat-1');
+
+    const subcategorySelect = screen.getByLabelText('Subcategory');
+    expect(within(subcategorySelect).getByRole('option', { name: 'Groceries' })).toBeInTheDocument();
+    expect(within(subcategorySelect).getByRole('option', { name: 'Restaurant' })).toBeInTheDocument();
+    expect(within(subcategorySelect).queryByRole('option', { name: 'Monthly' })).toBeNull();
   });
 
   it('opens edit modal and updates transaction', async () => {
@@ -207,6 +454,11 @@ describe('TransactionsPage', () => {
     await user.clear(labelInput);
     await user.type(labelInput, 'Updated');
 
+    const projectSelect = screen.getAllByRole('combobox').find(s =>
+      (s as HTMLSelectElement).options[0]?.text === 'No project',
+    ) as HTMLSelectElement;
+    await user.selectOptions(projectSelect, '');
+
     await user.click(screen.getByText('Save'));
 
     await waitFor(() => {
@@ -215,7 +467,7 @@ describe('TransactionsPage', () => {
 
     expect(mockUpdateTransaction).toHaveBeenCalledWith(
       'tx-1',
-      expect.objectContaining({ label: 'Updated' }),
+      expect.objectContaining({ label: 'Updated', projectIds: [] }),
     );
   });
 

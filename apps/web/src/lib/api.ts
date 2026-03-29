@@ -21,6 +21,17 @@ export class CategoryConflictError extends Error {
   }
 }
 
+export class ProjectConflictError extends Error {
+  constructor(
+    message: string,
+    public readonly transactions: LinkedTransaction[],
+    public readonly total: number,
+  ) {
+    super(message);
+    this.name = 'ProjectConflictError';
+  }
+}
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const user = auth.currentUser;
   if (!user) return {};
@@ -45,6 +56,10 @@ async function request<T>(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     if (res.status === 409 && Array.isArray(err.transactions)) {
+      // Check if it's a project conflict or category conflict based on path
+      if (path.includes('/projects')) {
+        throw new ProjectConflictError(err.message as string, err.transactions as LinkedTransaction[], err.total as number);
+      }
       throw new CategoryConflictError(err.message as string, err.transactions as LinkedTransaction[], err.total as number);
     }
     throw new Error(err.message ?? 'API error');
@@ -173,6 +188,16 @@ export const deleteCategory = (id: string) =>
 export const seedDefaultCategories = () =>
   request<{ seeded: boolean }>('/categories/seed-defaults', { method: 'POST', body: JSON.stringify({}) });
 
+// ── Projects ────────────────────────────────────────────────────────────
+export const getProjects = (includeArchived = false) =>
+  request<ProjectResponse[]>(`/projects?includeArchived=${includeArchived}`);
+export const createProject = (body: CreateProjectBody) =>
+  request<ProjectResponse>('/projects', { method: 'POST', body: JSON.stringify(body) });
+export const updateProject = (id: string, body: Partial<CreateProjectBody>) =>
+  request<ProjectResponse>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const deleteProject = (id: string) =>
+  request<void>(`/projects/${id}`, { method: 'DELETE' });
+
 export interface ImportCategoryRow {
   rowNumber: number; category: string; subcategory?: string;
   kind: 'income' | 'expense'; occurrences: number; alreadyExists: boolean;
@@ -215,6 +240,8 @@ export const getCategoryExpenses = (year: number, month?: number) =>
   );
 export const getNetCashflow = (from: string, to: string) =>
   request<NetCashflowResponse[]>(`/analytics/net-cashflow?from=${from}&to=${to}`);
+export const getProjectAnalytics = (projectId: string) =>
+  request<ProjectAnalyticsResponse>(`/analytics/project?projectId=${encodeURIComponent(projectId)}`);
 
 // ── Settings ────────────────────────────────────────────────────────────
 export const getSettings = () => request<UserSettings>('/settings');
@@ -242,12 +269,13 @@ export interface CreateAccountBody {
 export interface TransactionResponse {
   id: string; accountId: string; categoryId?: string; subcategory?: string; type: string;
   amount: number; currency: string; date: string; label: string;
-  note?: string; isForecasted: boolean;
+  note?: string; isForecasted: boolean; projectIds?: string[];
   createdAt: string; updatedAt: string;
 }
 export interface CreateTransactionBody {
   amount: number; currency: string; type: 'income' | 'expense'; date: string;
   accountId: string; label: string; categoryId?: string; subcategory?: string; note?: string; isForecasted?: boolean;
+  projectIds?: string[];
   recurring?: {
     frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
     interval: number;
@@ -298,8 +326,34 @@ export interface CategoryExpensesResponse {
 export interface NetCashflowResponse {
   month: string; income: number; expenses: number; net: number;
 }
+export interface ProjectAnalyticsResponse {
+  projectId: string;
+  totalIncome: number;
+  totalExpenses: number;
+  net: number;
+  transactions: Array<{
+    id: string;
+    accountId: string;
+    categoryId?: string;
+    subcategory?: string;
+    type: 'income' | 'expense';
+    amount: number;
+    currency: string;
+    date: string;
+    label: string;
+    note?: string;
+    isForecasted: boolean;
+  }>;
+}
 export interface UserSettings {
   baseCurrency: string; fxRates: Record<string, number>; privacyMode: boolean;
+}
+export interface ProjectResponse {
+  id: string; name: string; description?: string; color?: string;
+  isArchived: boolean; createdAt: string; updatedAt: string;
+}
+export interface CreateProjectBody {
+  name: string; description?: string; color?: string;
 }
 
 // ── Transaction Import ─────────────────────────────────────────────────

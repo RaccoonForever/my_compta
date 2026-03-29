@@ -13,13 +13,16 @@ vi.mock('@/lib/api', async () => {
     createTransaction: vi.fn(),
     getAccounts: vi.fn(),
     getCategories: vi.fn(),
+    getProjects: vi.fn(),
     autocomplete: vi.fn(),
   };
 });
 
 const mockGetSettings = vi.mocked(api.getSettings);
+const mockCreateTransaction = vi.mocked(api.createTransaction);
 const mockGetAccounts = vi.mocked(api.getAccounts);
 const mockGetCategories = vi.mocked(api.getCategories);
+const mockGetProjects = vi.mocked(api.getProjects);
 const mockAutocomplete = vi.mocked(api.autocomplete);
 
 function renderModal() {
@@ -71,7 +74,19 @@ describe('AddTransactionModal', () => {
       },
     ] as any);
 
+    mockGetProjects.mockResolvedValue([
+      {
+        id: 'proj-1',
+        name: 'Flat renovation',
+        color: '#22c55e',
+        isArchived: false,
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    ] as any);
+
     mockAutocomplete.mockResolvedValue([]);
+    mockCreateTransaction.mockResolvedValue({ id: 'tx-1' } as any);
   });
 
   it('keeps income and expense buttons visible after enabling recurring', async () => {
@@ -148,5 +163,43 @@ describe('AddTransactionModal', () => {
     expect(reopenedAmountInput).toHaveValue(null);
     expect(reopenedLabelInput).toHaveValue('');
     expect(reopenedRecurringCheckbox).not.toBeChecked();
+  });
+
+  it('submits selected projectIds when saving', async () => {
+    renderModal();
+    const user = userEvent.setup();
+
+    const amountInput = await screen.findByPlaceholderText('0.00');
+    const labelInput = await screen.findByPlaceholderText('Label (e.g. Rent)');
+    const saveButton = screen.getByRole('button', { name: 'Save' });
+    const accountSelect = screen.getAllByRole('combobox').find((el) =>
+      Array.from((el as HTMLSelectElement).options).some((opt) => opt.value === 'acc-1'),
+    ) as HTMLSelectElement;
+    const projectSelect = screen.getAllByRole('combobox').find((el) =>
+      Array.from((el as HTMLSelectElement).options).some((opt) => opt.value === 'proj-1'),
+    ) as HTMLSelectElement;
+
+    await user.selectOptions(accountSelect, 'acc-1');
+    await user.type(amountInput, '120');
+    await user.type(labelInput, 'Tiles');
+    await user.selectOptions(projectSelect, 'proj-1');
+
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
+
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockCreateTransaction).toHaveBeenCalled();
+    });
+
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 120,
+        label: 'Tiles',
+        projectIds: ['proj-1'],
+      }),
+    );
   });
 });

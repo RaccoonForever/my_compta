@@ -7,6 +7,7 @@ import { RecurringModule } from '../application/recurring/recurring.module.js';
 import { DashboardModule } from '../application/dashboard/dashboard.module.js';
 import { AnalyticsModule } from '../application/analytics/analytics.module.js';
 import { SettingsModule } from '../application/settings/settings.module.js';
+import { ProjectsModule } from '../application/projects/projects.module.js';
 
 @Global()
 @Module({
@@ -19,6 +20,7 @@ import { SettingsModule } from '../application/settings/settings.module.js';
     DashboardModule,
     AnalyticsModule,
     SettingsModule,
+    ProjectsModule,
   ],
   exports: [FirebaseModule],
 })

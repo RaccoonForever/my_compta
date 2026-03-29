@@ -17,6 +17,26 @@ export interface CategoryExpensesResult {
   monthlyBreakdown: Array<{ month: number; total: number }>;
 }
 
+export interface ProjectAnalyticsResult {
+  projectId: string;
+  totalIncome: number;
+  totalExpenses: number;
+  net: number;
+  transactions: Array<{
+    id: string;
+    accountId: string;
+    categoryId?: string;
+    subcategory?: string;
+    type: 'income' | 'expense';
+    amount: number;
+    currency: string;
+    date: string;
+    label: string;
+    note?: string;
+    isForecasted: boolean;
+  }>;
+}
+
 @Injectable()
 export class AnalyticsService {
   constructor(
@@ -115,5 +135,67 @@ export class AnalyticsService {
         expenses: Math.round(expenses * 100) / 100,
         net: Math.round((income - expenses) * 100) / 100,
       }));
+  }
+
+  async getProjectAnalytics(
+    userId: string,
+    projectId: string,
+  ): Promise<ProjectAnalyticsResult> {
+    const txs = await this.txRepo.findByUser(userId);
+    const tagged = txs.filter((tx) => this.extractProjectIds(tx).includes(projectId));
+
+    let totalIncome = 0;
+    let totalExpenses = 0;
+
+    for (const tx of tagged) {
+      if (tx.type === 'income') totalIncome += tx.amount.value;
+      else totalExpenses += tx.amount.value;
+    }
+
+    const transactions = tagged
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .map(tx => ({
+        id: tx.id,
+        accountId: tx.accountId,
+        ...(tx.categoryId !== undefined ? { categoryId: tx.categoryId } : {}),
+        ...(tx.subcategory !== undefined ? { subcategory: tx.subcategory } : {}),
+        type: tx.type,
+        amount: Math.round(tx.amount.value * 100) / 100,
+        currency: tx.amount.currency,
+        date: tx.date.toISOString(),
+        label: tx.label,
+        ...(tx.note !== undefined ? { note: tx.note } : {}),
+        isForecasted: tx.isForecasted,
+      }));
+
+    const roundedIncome = Math.round(totalIncome * 100) / 100;
+    const roundedExpenses = Math.round(totalExpenses * 100) / 100;
+
+    return {
+      projectId,
+      totalIncome: roundedIncome,
+      totalExpenses: roundedExpenses,
+      net: Math.round((roundedIncome - roundedExpenses) * 100) / 100,
+      transactions,
+    };
+  }
+
+  private extractProjectIds(tx: { projectIds?: unknown; projectId?: unknown }): string[] {
+    const normalized = new Set<string>();
+    const ids = tx.projectIds;
+
+    if (Array.isArray(ids)) {
+      for (const id of ids) {
+        if (typeof id === 'string' && id.length > 0) normalized.add(id);
+      }
+    } else if (typeof ids === 'string' && ids.length > 0) {
+      normalized.add(ids);
+    }
+
+    if (typeof tx.projectId === 'string' && tx.projectId.length > 0) {
+      normalized.add(tx.projectId);
+    }
+
+    return [...normalized];
   }
 }

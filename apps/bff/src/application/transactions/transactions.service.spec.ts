@@ -187,6 +187,25 @@ describe('TransactionsService', () => {
       expect(tx.accountId).toBe('acc-1');
     });
 
+    it('persists projectIds when creating a transaction', async () => {
+      accountRepo.findById.mockResolvedValue(mockAccount);
+
+      const tx = await service.create('user-1', {
+        type: 'expense',
+        amount: 75,
+        currency: 'CHF',
+        date: PAST_DATE.toISOString(),
+        accountId: 'acc-1',
+        label: 'Project expense',
+        projectIds: ['proj-1', 'proj-2'],
+      });
+
+      expect(tx.projectIds).toEqual(['proj-1', 'proj-2']);
+      expect(txRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ projectIds: ['proj-1', 'proj-2'] }),
+      );
+    });
+
     it('creates a recurring template when recurring config is provided', async () => {
       accountRepo.findById.mockResolvedValue(mockAccount);
 
@@ -387,6 +406,30 @@ describe('TransactionsService', () => {
 
       expect(txRepo.save).toHaveBeenCalledOnce();
       expect(updated.date.getTime()).toBe(PAST_DATE.getTime());
+    });
+
+    it('updates projectIds when provided', async () => {
+      txRepo.findById.mockResolvedValue(
+        Transaction.create({
+          id: 'tx-1',
+          userId: 'user-1',
+          accountId: 'acc-1',
+          type: 'expense',
+          amount: Money.of(100, 'CHF'),
+          date: PAST_DATE,
+          label: 'Initial',
+          projectIds: ['proj-old'],
+        }),
+      );
+
+      const updated = await service.update('user-1', 'tx-1', {
+        projectIds: ['proj-new-1', 'proj-new-2'],
+      });
+
+      expect(updated.projectIds).toEqual(['proj-new-1', 'proj-new-2']);
+      expect(txRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ projectIds: ['proj-new-1', 'proj-new-2'] }),
+      );
     });
   });
 });

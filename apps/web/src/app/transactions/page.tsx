@@ -8,6 +8,7 @@ import {
   deleteMultipleTransactions,
   getAccounts,
   getCategories,
+  getProjects,
   updateTransaction,
   refreshForecastTransactions,
 } from '@/lib/api';
@@ -37,6 +38,7 @@ export default function TransactionsPage() {
   const [deleteModal, setDeleteModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'all' | 'uncategorized'>('all');
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [bulkEditModal, setBulkEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     type: 'expense',
     amount: '',
@@ -46,7 +48,13 @@ export default function TransactionsPage() {
     categoryId: '',
     subcategory: '',
     note: '',
+    selectedProjectId: '',
     isForecasted: false,
+  });
+  const [bulkForm, setBulkForm] = useState({
+    categorySelection: '__keep__',
+    subcategorySelection: '__keep__',
+    projectSelection: '__keep__',
   });
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
@@ -61,9 +69,11 @@ export default function TransactionsPage() {
   });
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => getAccounts() });
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: () => getCategories() });
+  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
 
   const accountById = Object.fromEntries(accounts.map(a => [a.id, a]));
   const catById = Object.fromEntries(categories.map(c => [c.id, c]));
+  const projectById = Object.fromEntries(projects.map(p => [p.id, p]));
   const uncategorizedTransactions = transactions.filter(
     tx => !tx.categoryId || !tx.subcategory,
   );
@@ -85,6 +95,10 @@ export default function TransactionsPage() {
   const editingTx = editingTxId
     ? transactions.find(tx => tx.id === editingTxId) ?? null
     : null;
+  const selectedTransactions = transactions.filter(tx => selectedIds.has(tx.id));
+  const selectedTypeSet = new Set(selectedTransactions.map(tx => tx.type));
+  const selectedBulkType = selectedTypeSet.size === 1 ? [...selectedTypeSet][0] : null;
+  const isMixedBulkType = selectedTypeSet.size > 1;
 
   // Pagination calculations
   const totalPages = Math.ceil(transactions.length / pageSize);
@@ -123,6 +137,7 @@ export default function TransactionsPage() {
         categoryId: editForm.categoryId || undefined,
         subcategory: editForm.subcategory || undefined,
         note: editForm.note || undefined,
+        projectIds: editForm.selectedProjectId ? [editForm.selectedProjectId] : [],
         isForecasted: editForm.isForecasted,
       });
     },
@@ -132,6 +147,52 @@ export default function TransactionsPage() {
       void qc.invalidateQueries({ queryKey: ['accounts'] });
       setEditingTxId(null);
       setSelectedIds(new Set());
+    },
+  });
+
+  const bulkUpdateMut = useMutation({
+    mutationFn: async () => {
+      const payload: {
+        categoryId?: string;
+        subcategory?: string;
+        projectIds?: string[];
+      } = {};
+
+      if (!isMixedBulkType) {
+        if (bulkForm.categorySelection === '__clear__') {
+          payload.categoryId = undefined;
+          payload.subcategory = undefined;
+        } else if (bulkForm.categorySelection !== '__keep__') {
+          payload.categoryId = bulkForm.categorySelection;
+        }
+
+        if (bulkForm.subcategorySelection === '__clear__') {
+          payload.subcategory = undefined;
+        } else if (bulkForm.subcategorySelection !== '__keep__') {
+          payload.subcategory = bulkForm.subcategorySelection;
+        }
+      }
+
+      if (bulkForm.projectSelection === '__clear__') {
+        payload.projectIds = [];
+      } else if (bulkForm.projectSelection !== '__keep__') {
+        payload.projectIds = [bulkForm.projectSelection];
+      }
+
+      const selected = Array.from(selectedIds);
+      await Promise.all(selected.map(id => updateTransaction(id, payload)));
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['transactions'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['accounts'] });
+      setBulkEditModal(false);
+      setSelectedIds(new Set());
+      setBulkForm({
+        categorySelection: '__keep__',
+        subcategorySelection: '__keep__',
+        projectSelection: '__keep__',
+      });
     },
   });
 
@@ -201,9 +262,36 @@ export default function TransactionsPage() {
       categoryId: tx.categoryId ?? '',
       subcategory: tx.subcategory ?? '',
       note: tx.note ?? '',
+      selectedProjectId: tx.projectIds?.[0] ?? '',
       isForecasted: tx.isForecasted ?? false,
     });
   };
+
+  const handleBulkEditSelected = () => {
+    if (selectedIds.size < 2) return;
+    setBulkForm({
+      categorySelection: '__keep__',
+      subcategorySelection: '__keep__',
+      projectSelection: '__keep__',
+    });
+    setBulkEditModal(true);
+  };
+
+  const selectedBulkCategoryId =
+    bulkForm.categorySelection !== '__keep__' && bulkForm.categorySelection !== '__clear__'
+      ? bulkForm.categorySelection
+      : '';
+  const bulkCategories = selectedBulkType
+    ? categories.filter(c => c.kind === selectedBulkType)
+    : [];
+  const bulkSubcategoryOptions =
+    selectedBulkCategoryId && catById[selectedBulkCategoryId]?.subcategories
+      ? catById[selectedBulkCategoryId].subcategories
+      : [];
+  const hasBulkChanges =
+    bulkForm.categorySelection !== '__keep__' ||
+    bulkForm.subcategorySelection !== '__keep__' ||
+    bulkForm.projectSelection !== '__keep__';
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
@@ -223,6 +311,14 @@ export default function TransactionsPage() {
               className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors"
             >
               Edit
+            </button>
+          )}
+          {selectedIds.size > 1 && (
+            <button
+              onClick={handleBulkEditSelected}
+              className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors"
+            >
+              Edit selected
             </button>
           )}
           {selectedIds.size > 0 && (
@@ -342,6 +438,7 @@ export default function TransactionsPage() {
                 <th className="px-4 py-3 text-left">Account</th>
                 <th className="px-4 py-3 text-left">Category</th>
                 <th className="px-4 py-3 text-left">Subcategory</th>
+                <th className="px-4 py-3 text-left">Projects</th>
                 <th className="px-4 py-3 text-left">Forecast</th>
                 <th className="px-4 py-3 text-right">Amount</th>
               </tr>
@@ -371,6 +468,26 @@ export default function TransactionsPage() {
                     <td className="px-4 py-3 text-slate-500">{acc?.name ?? tx.accountId}</td>
                     <td className="px-4 py-3 text-slate-500">{cat?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{tx.subcategory ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      {tx.projectIds && tx.projectIds.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {tx.projectIds.map(projectId => {
+                            const project = projectById[projectId];
+                            return (
+                              <span
+                                key={projectId}
+                                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                                style={{ backgroundColor: project?.color ?? '#6366f1' }}
+                              >
+                                {project?.name ?? projectId}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">
                       <span
                         className={clsx(
@@ -395,7 +512,7 @@ export default function TransactionsPage() {
               })}
               {transactions.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-sm">No transactions found.</td>
+                  <td colSpan={9} className="px-4 py-10 text-center text-slate-400 text-sm">No transactions found.</td>
                 </tr>
               )}
             </tbody>
@@ -645,6 +762,24 @@ export default function TransactionsPage() {
               className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
             />
 
+            <div className="space-y-1">
+              <label className="text-sm text-slate-700 font-medium">Projects (optional)</label>
+              {projects.length === 0 ? (
+                <p className="text-xs text-slate-500">No projects yet. Create one in Settings.</p>
+              ) : (
+                <select
+                  value={editForm.selectedProjectId}
+                  onChange={e => setEditForm(f => ({ ...f, selectedProjectId: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+                >
+                  <option value="">No project</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
             <label className="flex items-center gap-2 text-sm text-slate-600">
               <input
                 type="checkbox"
@@ -672,6 +807,113 @@ export default function TransactionsPage() {
                 className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors"
               >
                 {updateMut.isPending ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-screen overflow-y-auto p-6 flex flex-col gap-4"
+            data-testid="bulk-edit-modal"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-800">Bulk Edit Transactions</h2>
+              <button
+                onClick={() => setBulkEditModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-500">
+              Apply changes to {selectedIds.size} selected transaction{selectedIds.size > 1 ? 's' : ''}.
+            </p>
+
+            <div className="space-y-1">
+              <label htmlFor="bulk-category" className="text-sm text-slate-700 font-medium">Category</label>
+              <select
+                id="bulk-category"
+                value={bulkForm.categorySelection}
+                onChange={e => {
+                  const next = e.target.value;
+                  setBulkForm(f => ({
+                    ...f,
+                    categorySelection: next,
+                    subcategorySelection: next === '__clear__' ? '__clear__' : '__keep__',
+                  }));
+                }}
+                disabled={isMixedBulkType}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+              >
+                <option value="__keep__">Keep unchanged</option>
+                <option value="__clear__">Clear category</option>
+                {bulkCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="bulk-subcategory" className="text-sm text-slate-700 font-medium">Subcategory</label>
+              <select
+                id="bulk-subcategory"
+                value={bulkForm.subcategorySelection}
+                onChange={e => setBulkForm(f => ({ ...f, subcategorySelection: e.target.value }))}
+                disabled={
+                  isMixedBulkType ||
+                  (bulkForm.categorySelection !== '__clear__' && !selectedBulkCategoryId)
+                }
+                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                <option value="__keep__">Keep unchanged</option>
+                <option value="__clear__">Clear subcategory</option>
+                {bulkSubcategoryOptions.map(sub => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+            </div>
+
+            {isMixedBulkType && (
+              <p className="text-xs text-slate-500">
+                Mixed income and expense selection: category and subcategory cannot be edited together.
+              </p>
+            )}
+
+            <div className="space-y-1">
+              <label htmlFor="bulk-project" className="text-sm text-slate-700 font-medium">Project</label>
+              <select
+                id="bulk-project"
+                value={bulkForm.projectSelection}
+                onChange={e => setBulkForm(f => ({ ...f, projectSelection: e.target.value }))}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+              >
+                <option value="__keep__">Keep unchanged</option>
+                <option value="__clear__">Clear project</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {bulkUpdateMut.isError && (
+              <p className="text-red-500 text-sm">{(bulkUpdateMut.error as Error).message}</p>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setBulkEditModal(false)}
+                className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => bulkUpdateMut.mutate()}
+                disabled={!hasBulkChanges || bulkUpdateMut.isPending}
+                className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors"
+              >
+                {bulkUpdateMut.isPending ? 'Saving…' : `Apply to ${selectedIds.size}`}
               </button>
             </div>
           </div>
